@@ -1118,13 +1118,69 @@ export const getAllUsers = async (req, res) => {
     try {
         const { role, center, active, search } = req.query;
         let filter = {};
+        const normalizedSearch = search?.trim();
+        const searchValue = normalizedSearch?.toLowerCase();
 
         if (role) filter.role = role;
         if (center) filter.center_fk_id = center;
         if (active) filter.is_active = active === "true";
-        if (search) filter.username = { [Sequelize.Op.iLike]: `%${search}%` };
+        if (normalizedSearch) {
+            const searchPattern = `%${normalizedSearch}%`;
+            filter[Sequelize.Op.or] = [
+                { username: { [Sequelize.Op.iLike]: searchPattern } },
+                { firstname_txt: { [Sequelize.Op.iLike]: searchPattern } },
+                { lastname_txt: { [Sequelize.Op.iLike]: searchPattern } },
+                Sequelize.where(Sequelize.cast(Sequelize.col("role"), "text"), {
+                    [Sequelize.Op.iLike]: searchPattern,
+                }),
+                { stud_exam_symbol_no: { [Sequelize.Op.iLike]: searchPattern } },
+                { stud_exam_reg_no: { [Sequelize.Op.iLike]: searchPattern } },
+                { stud_batch_year: { [Sequelize.Op.iLike]: searchPattern } },
+                Sequelize.where(Sequelize.col("center.center_name_txt"), {
+                    [Sequelize.Op.iLike]: searchPattern,
+                }),
+            ];
+        }
 
-        const users = await User.findAll({ where: filter, order: [['createdAt_ts', 'DESC']] });
+        const order = normalizedSearch
+            ? [
+                  [
+                      Sequelize.literal(`
+                        CASE
+                          WHEN LOWER("User"."firstname_txt") = ${sequelize.escape(normalizedSearch.toLowerCase())} THEN 120
+                          WHEN LOWER("User"."firstname_txt") LIKE ${sequelize.escape(`${searchValue}%`)} THEN 110
+                          WHEN LOWER("User"."firstname_txt") LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 100
+                          WHEN LOWER("User"."lastname_txt") LIKE ${sequelize.escape(`${searchValue}%`)} THEN 90
+                          WHEN LOWER("User"."username") LIKE ${sequelize.escape(`${searchValue}%`)} THEN 80
+                          WHEN LOWER(CONCAT_WS(' ', "User"."firstname_txt", "User"."lastname_txt")) LIKE ${sequelize.escape(`${searchValue}%`)} THEN 70
+                          WHEN LOWER("User"."lastname_txt") LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 60
+                          WHEN LOWER("User"."username") LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 50
+                          WHEN LOWER("User"."stud_exam_symbol_no") LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 40
+                          WHEN LOWER("User"."stud_exam_reg_no") LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 35
+                          WHEN LOWER("User"."stud_batch_year") LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 30
+                          WHEN LOWER("center"."center_name_txt") LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 20
+                          WHEN LOWER(CAST("User"."role" AS TEXT)) LIKE ${sequelize.escape(`%${searchValue}%`)} THEN 10
+                          ELSE 0
+                        END
+                      `),
+                      "DESC",
+                  ],
+                  ["createdAt_ts", "DESC"],
+              ]
+            : [["createdAt_ts", "DESC"]];
+
+        const users = await User.findAll({
+            where: filter,
+            include: [
+                {
+                    model: ExaminationCenter,
+                    as: "center",
+                    attributes: ["id", "center_name_txt"],
+                    required: false,
+                },
+            ],
+            order,
+        });
         res.status(200).json({ data: users });
     } catch (err) {
         res.status(500).json({ error: err.message });
