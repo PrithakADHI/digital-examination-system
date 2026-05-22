@@ -14,8 +14,10 @@ export default function UserPage() {
   const [userToEdit, setUserToEdit] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const usersQuery = useUsers({ limit: 1000 });
+  const usersQuery = useUsers({ limit: 1000, search: searchTerm || undefined });
   const centersQuery = useCenters({ limit: 1000 });
   const deactivateMutation = useDeactivateUser();
   const activateMutation = useActivateUser();
@@ -60,6 +62,18 @@ export default function UserPage() {
     setIsModalOpen(true);
   };
 
+  const handleSearchSubmit = () => {
+    const nextSearchTerm = searchInput.trim();
+    setSearchTerm(nextSearchTerm);
+    setPage(1);
+  };
+
+  const handleSearchClear = () => {
+    setSearchInput("");
+    setSearchTerm("");
+    setPage(1);
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-20 bg-base-100/50 rounded-2xl glass-card">
@@ -86,6 +100,11 @@ export default function UserPage() {
         pagination={pagination}
         setPage={setPage}
         centersById={centersById}
+        searchInput={searchInput}
+        searchTerm={searchTerm}
+        onSearchInputChange={setSearchInput}
+        onSearchSubmit={handleSearchSubmit}
+        onSearchClear={handleSearchClear}
         onCreateNew={handleCreateNew}
         onEdit={handleEditUser}
         onDelete={setDeleteTarget}

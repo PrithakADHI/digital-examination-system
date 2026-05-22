@@ -63,46 +63,94 @@ const examinationCenterSchema = Joi.object({
     whitelist_url: Joi.string().max(255).allow(null, ""),
 });
 
-const subjectPaperSchema = Joi.object({
-    subject_fk_id: Joi.number().required(),
-    exam_batch_year: Joi.string().max(100).required(),
-    paper_checkers_list: Joi.array().items(Joi.number()).allow(null),
-    questions: Joi.array()
-        .items(
-            Joi.object({
-                question_txt: Joi.string().required(),
-                question_type: Joi.string().valid("LONG", "SHORT", "MCQ").required(),
-                option1: Joi.string().allow(null, "").optional(),
-                option2: Joi.string().allow(null, "").optional(),
-                option3: Joi.string().allow(null, "").optional(),
-                option4: Joi.string().allow(null, "").optional(),
-            })
-        )
-        .min(1)
-        .required(),
-});
+const nameSchema = Joi.string()
+    .trim()
+    .pattern(/^[A-Za-z]+$/)
+    .messages({
+        "string.pattern.base": "Name must contain letters only.",
+    });
+
+const digitsSchema = Joi.string()
+    .trim()
+    .pattern(/^\d{8,10}$/)
+    .messages({
+        "string.pattern.base": "Must contain 8 to 10 digits.",
+    });
+
+const batchYearSchema = Joi.number().integer().min(2020).max(new Date().getFullYear() + 10);
+
+const normalizeName = (value) => {
+    const cleanValue = value.trim();
+    if (!cleanValue) return cleanValue;
+    return cleanValue.charAt(0).toUpperCase() + cleanValue.slice(1).toLowerCase();
+};
+
 const createUserSchema = Joi.object({
-    firstname_txt: Joi.string().required(),
-    lastname_txt: Joi.string().required(),
+    firstname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).required().messages({
+        "string.pattern.base": "First name must contain letters only.",
+    }),
+    lastname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).required().messages({
+        "string.pattern.base": "Last name must contain letters only.",
+    }),
     role: Joi.string().valid("SUPERADMIN", "ADMIN", "TEACHER", "STUDENT").required(),
     username: Joi.string().required(),
     email_txt: Joi.string().email().allow(null, ""),
     phone_num_txt: Joi.string().allow(null, ""),
     center_fk_id: Joi.number().allow(null),
-    stud_batch_year: Joi.string().allow(null, ""),
-    stud_exam_symbol_no: Joi.string().allow(null, ""),
-    stud_exam_reg_no: Joi.string().allow(null, ""),
-    is_active: Joi.boolean().default(true)
+    stud_batch_year: Joi.when("role", {
+        is: "STUDENT",
+        then: batchYearSchema.required(),
+        otherwise: batchYearSchema.allow(null, ""),
+    }),
+    stud_exam_symbol_no: Joi.when("role", {
+        is: "STUDENT",
+        then: Joi.string().trim().pattern(/^\d{8,10}$/).required().messages({
+            "string.pattern.base": "Symbol number must contain 8 to 10 digits.",
+        }),
+        otherwise: Joi.string().allow(null, ""),
+    }),
+    stud_exam_reg_no: Joi.when("role", {
+        is: "STUDENT",
+        then: Joi.string().trim().pattern(/^\d{8,10}$/).required().messages({
+            "string.pattern.base": "Registration number must contain 8 to 10 digits.",
+        }),
+        otherwise: Joi.string().allow(null, ""),
+    }),
+    is_active: Joi.boolean().default(true),
 });
 
 const updateUserSchema = Joi.object({
-    firstname_txt: Joi.string(),
-    lastname_txt: Joi.string(),
+    firstname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).messages({
+        "string.pattern.base": "First name must contain letters only.",
+    }),
+    lastname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).messages({
+        "string.pattern.base": "Last name must contain letters only.",
+    }),
+    role: Joi.string().valid("SUPERADMIN", "ADMIN", "TEACHER", "STUDENT"),
     email_txt: Joi.string().email().allow(null, ""),
     phone_num_txt: Joi.string().allow(null, ""),
     center_fk_id: Joi.number().allow(null),
-    is_active: Joi.boolean()
-}).unknown(true); // Allows extra fields like batch_year without error
+    stud_batch_year: Joi.when("role", {
+        is: "STUDENT",
+        then: batchYearSchema.required(),
+        otherwise: batchYearSchema.allow(null, ""),
+    }),
+    stud_exam_symbol_no: Joi.when("role", {
+        is: "STUDENT",
+        then: Joi.string().trim().pattern(/^\d{8,10}$/).required().messages({
+            "string.pattern.base": "Symbol number must contain 8 to 10 digits.",
+        }),
+        otherwise: Joi.string().allow(null, ""),
+    }),
+    stud_exam_reg_no: Joi.when("role", {
+        is: "STUDENT",
+        then: Joi.string().trim().pattern(/^\d{8,10}$/).required().messages({
+            "string.pattern.base": "Registration number must contain 8 to 10 digits.",
+        }),
+        otherwise: Joi.string().allow(null, ""),
+    }),
+    is_active: Joi.boolean(),
+}).unknown(true);
 
 const assignStudentsSchema = Joi.object({
     subject_fk_id: Joi.number().required(),
@@ -1036,7 +1084,11 @@ export const createUser = async (req, res) => {
     if (error) return res.status(400).json({ error: error.details[0].message });
 
     try {
-        const user = await User.create(value);
+        const user = await User.create({
+            ...value,
+            firstname_txt: normalizeName(value.firstname_txt),
+            lastname_txt: normalizeName(value.lastname_txt),
+        });
         res.status(201).json({ message: "User created", data: user });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -1087,7 +1139,11 @@ export const bulkCreateUsers = async (req, res) => {
             }
 
             // 3. Create the valid user
-            const newUser = await User.create(value);
+            const newUser = await User.create({
+                ...value,
+                firstname_txt: normalizeName(value.firstname_txt),
+                lastname_txt: normalizeName(value.lastname_txt),
+            });
             results.successCount++;
             results.createdUsers.push(newUser);
 
@@ -1208,7 +1264,14 @@ export const updateUser = async (req, res) => {
         const user = await User.findByPk(req.params.id);
         if (!user) return res.status(404).json({ error: "User not found" });
 
-        await user.update(req.body);
+        const nextValue = {
+            ...value,
+        };
+
+        if (nextValue.firstname_txt) nextValue.firstname_txt = normalizeName(nextValue.firstname_txt);
+        if (nextValue.lastname_txt) nextValue.lastname_txt = normalizeName(nextValue.lastname_txt);
+
+        await user.update(nextValue);
         res.status(200).json({ message: "Updated successfully", data: user });
     } catch (err) {
         res.status(500).json({ error: err.message });

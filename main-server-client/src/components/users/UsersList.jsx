@@ -12,8 +12,28 @@ function studentValue(user, key) {
   return user?.[key] || "—";
 }
 
-export default function UsersList({ users, pagination, setPage, centersById, onCreateNew, onEdit, onDelete }) {
+export default function UsersList({
+  users,
+  pagination,
+  setPage,
+  centersById,
+  searchInput,
+  searchTerm,
+  onSearchInputChange,
+  onSearchSubmit,
+  onSearchClear,
+  onCreateNew,
+  onEdit,
+  onDelete,
+}) {
   const list = users ?? [];
+  const hasSearchTerm = Boolean(searchTerm?.trim());
+  const emptyMessage = hasSearchTerm ? `No users match "${searchTerm}".` : "No users found.";
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    onSearchSubmit?.();
+  };
 
   return (
     <div className="glass-card shadow-sm border border-base-300/30 overflow-hidden animate-fade-in mb-8">
@@ -23,16 +43,49 @@ export default function UsersList({ users, pagination, setPage, centersById, onC
             <h2 className="text-xl font-bold tracking-tight">System Users</h2>
             <p className="text-sm text-base-content/50 font-medium mt-1">Manage user records and center assignment</p>
           </div>
-          <button
-            type="button"
-            className="btn btn-primary rounded-xl px-6 shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-105"
-            onClick={onCreateNew}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            User
-          </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
+            <form className="flex flex-col sm:flex-row items-stretch gap-3 w-full sm:w-auto" onSubmit={handleSubmit}>
+              <label className="input input-bordered flex items-center gap-2 rounded-xl bg-base-100 w-full sm:w-[320px]">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={(event) => onSearchInputChange?.(event.target.value)}
+                  placeholder="Search users..."
+                  className="grow"
+                />
+              </label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-square rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-105"
+                  aria-label="Search users"
+                  title="Search"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+                  </svg>
+                </button>
+                {hasSearchTerm ? (
+                  <button type="button" className="btn btn-ghost rounded-xl px-5" onClick={onSearchClear}>
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+            </form>
+            <button
+              type="button"
+              className="btn btn-primary rounded-xl px-6 shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-105"
+              onClick={onCreateNew}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              User
+            </button>
+          </div>
         </div>
 
         <div className="hidden lg:block overflow-x-auto px-6 pb-6">
@@ -54,7 +107,7 @@ export default function UsersList({ users, pagination, setPage, centersById, onC
                 <tr>
                   <td colSpan={8} className="text-center py-16 bg-base-100/50 rounded-2xl border border-base-300/30 shadow-inner">
                     <div className="flex flex-col items-center gap-3 opacity-40">
-                      <span className="text-lg font-bold">No users found.</span>
+                      <span className="text-lg font-bold">{emptyMessage}</span>
                     </div>
                   </td>
                 </tr>
@@ -182,9 +235,7 @@ export default function UsersList({ users, pagination, setPage, centersById, onC
             </div>
           ))}
 
-          {list.length === 0 ? (
-            <div className="text-center py-12 opacity-40 font-semibold">No users found.</div>
-          ) : null}
+          {list.length === 0 ? <div className="text-center py-12 opacity-40 font-semibold">{emptyMessage}</div> : null}
         </div>
 
         {pagination?.totalPages > 1 && (
