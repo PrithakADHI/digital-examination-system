@@ -2,11 +2,27 @@ import { useMemo, useState } from "react";
 import { useCreateUser, useUpdateUser } from "../../hooks/useAdminQueries.js";
 
 const ROLE_OPTIONS = ["SUPERADMIN", "ADMIN", "TEACHER", "STUDENT"];
+const BATCH_YEAR_START = 2020;
+const BATCH_YEAR_END = new Date().getFullYear() + 10;
+
+function capitalizeName(value) {
+  const cleanValue = value.replace(/[^A-Za-z]/g, "");
+  if (!cleanValue) return "";
+  return cleanValue.charAt(0).toUpperCase() + cleanValue.slice(1).toLowerCase();
+}
+
+function digitsOnly(value) {
+  return value.replace(/\D/g, "").slice(0, 10);
+}
+
+function getBatchYearOptions() {
+  return Array.from({ length: BATCH_YEAR_END - BATCH_YEAR_START + 1 }, (_, index) => String(BATCH_YEAR_START + index));
+}
 
 function getInitialFormData(userToEdit) {
   return {
-    firstname_txt: userToEdit?.firstname_txt || "",
-    lastname_txt: userToEdit?.lastname_txt || "",
+    firstname_txt: capitalizeName(userToEdit?.firstname_txt || ""),
+    lastname_txt: capitalizeName(userToEdit?.lastname_txt || ""),
     username: userToEdit?.username || "",
     role: userToEdit?.role || "STUDENT",
     center_fk_id: userToEdit?.center_fk_id != null ? String(userToEdit.center_fk_id) : "",
@@ -29,6 +45,7 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
   const updateMutation = useUpdateUser(userToEdit?.id);
 
   const centerOptions = useMemo(() => centers ?? [], [centers]);
+  const batchYearOptions = useMemo(() => getBatchYearOptions(), []);
 
   if (!isOpen) return null;
 
@@ -39,15 +56,25 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      if (name === "firstname_txt" || name === "lastname_txt") {
+        return { ...prev, [name]: capitalizeName(value) };
+      }
+
+      if (name === "stud_exam_symbol_no" || name === "stud_exam_reg_no") {
+        return { ...prev, [name]: digitsOnly(value) };
+      }
+
+      return { ...prev, [name]: value };
+    });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
     const payload = {
-      firstname_txt: formData.firstname_txt.trim(),
-      lastname_txt: formData.lastname_txt.trim(),
+      firstname_txt: capitalizeName(formData.firstname_txt.trim()),
+      lastname_txt: capitalizeName(formData.lastname_txt.trim()),
       role: formData.role,
       center_fk_id: toNumberOrNull(formData.center_fk_id),
     };
@@ -57,8 +84,8 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
     }
 
     if (isStudent) {
-      payload.stud_exam_symbol_no = formData.stud_exam_symbol_no.trim();
-      payload.stud_exam_reg_no = formData.stud_exam_reg_no.trim();
+      payload.stud_exam_symbol_no = digitsOnly(formData.stud_exam_symbol_no.trim());
+      payload.stud_exam_reg_no = digitsOnly(formData.stud_exam_reg_no.trim());
       payload.stud_batch_year = formData.stud_batch_year.trim();
     }
 
@@ -93,6 +120,9 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
                 value={formData.firstname_txt}
                 onChange={handleChange}
                 required
+                  pattern="[A-Za-z]+"
+                  title="First name must contain letters only"
+                  autoComplete="off"
                 className="input input-bordered w-full rounded-xl bg-base-200/30 font-medium border-base-300/50"
               />
             </div>
@@ -107,6 +137,9 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
                 value={formData.lastname_txt}
                 onChange={handleChange}
                 required
+                  pattern="[A-Za-z]+"
+                  title="Last name must contain letters only"
+                  autoComplete="off"
                 className="input input-bordered w-full rounded-xl bg-base-200/30 font-medium border-base-300/50"
               />
             </div>
@@ -178,6 +211,10 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
                   name="stud_exam_symbol_no"
                   value={formData.stud_exam_symbol_no}
                   onChange={handleChange}
+                  inputMode="numeric"
+                  pattern="[0-9]{8,10}"
+                  maxLength={10}
+                  title="Symbol number must contain 8 to 10 digits"
                   className="input input-bordered w-full rounded-xl bg-base-100/70 font-medium border-base-300/50"
                 />
               </div>
@@ -191,6 +228,10 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
                   name="stud_exam_reg_no"
                   value={formData.stud_exam_reg_no}
                   onChange={handleChange}
+                  inputMode="numeric"
+                  pattern="[0-9]{8,10}"
+                  maxLength={10}
+                  title="Registration number must contain 8 to 10 digits"
                   className="input input-bordered w-full rounded-xl bg-base-100/70 font-medium border-base-300/50"
                 />
               </div>
@@ -199,13 +240,19 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
                 <label className="label">
                   <span className="label-text font-bold uppercase text-[10px] tracking-widest opacity-40">Batch Year</span>
                 </label>
-                <input
-                  type="text"
+                <select
                   name="stud_batch_year"
                   value={formData.stud_batch_year}
                   onChange={handleChange}
-                  className="input input-bordered w-full rounded-xl bg-base-100/70 font-medium border-base-300/50"
-                />
+                  className="select select-bordered w-full rounded-xl bg-base-100/70 font-medium border-base-300/50"
+                >
+                  <option value="">Select year</option>
+                  {batchYearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           ) : null}
