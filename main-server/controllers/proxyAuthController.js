@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import ExaminationCenter from "../models/ExaminationCenter.js";
 import { encrypt } from "../utils/encryption.js";
 
