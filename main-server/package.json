@@ -14,7 +14,7 @@
   "type": "module",
   "engines": {
     "node": "22.x",
-    "pnpm": "11.x"
+    "pnpm": "9.x"
   },
   "dependencies": {
     "@sequelize/postgres": "^7.0.0-alpha.46",
