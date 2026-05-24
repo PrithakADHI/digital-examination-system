@@ -63,13 +63,6 @@ const examinationCenterSchema = Joi.object({
     whitelist_url: Joi.string().max(255).allow(null, ""),
 });
 
-const nameSchema = Joi.string()
-    .trim()
-    .pattern(/^[A-Za-z]+$/)
-    .messages({
-        "string.pattern.base": "Name must contain letters only.",
-    });
-
 const digitsSchema = Joi.string()
     .trim()
     .pattern(/^\d{8,10}$/)
