@@ -1,5 +1,7 @@
 import { useQuestions } from "../hooks/useProxyQueries.js";
 
+const PROXY_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
+
 export default function MonitorPage() {
   const { data, isLoading, error } = useQuestions();
 
@@ -51,6 +53,16 @@ export default function MonitorPage() {
                 <div className="collapse-content"> 
                    <div className="pt-4 border-t border-base-200">
                       <p className="text-sm leading-relaxed mb-4">{q.question_txt}</p>
+
+                      {q.image_url && (
+                        <div className="mb-4 w-full max-w-md rounded-xl overflow-hidden border border-base-content/10 bg-base-200/50 p-2">
+                           <img 
+                             src={q.image_url.startsWith("http") ? q.image_url : `${PROXY_URL}${q.image_url.startsWith("/") ? "" : "/"}${q.image_url}`} 
+                             alt="Question Diagram" 
+                             className="max-h-48 w-full object-contain"
+                           />
+                        </div>
+                      )}
                       
                       {q.question_type === "MCQ" && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">

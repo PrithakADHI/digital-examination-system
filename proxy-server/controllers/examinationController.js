@@ -1,4 +1,7 @@
 import cron from "node-cron";
+import fs from "fs";
+import path from "path";
+import axios from "axios";
 import mainServerClient from "../utils/mainServerClient.js";
 import ProxySetting from "../models/ProxySetting.js";
 import Question from "../models/Question.js";
@@ -66,6 +69,58 @@ export const selectExamination = async (req, res) => {
 };
 
 /**
+ * Helper to download diagram image from cloud Cloudinary URL and save locally on Proxy disk.
+ */
+const downloadImage = async (url, questionId) => {
+    try {
+        if (!url || !url.startsWith("http")) {
+            return url;
+        }
+
+        const dir = "./question-images";
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+
+        let ext = ".png";
+        try {
+            const urlPath = new URL(url).pathname;
+            const urlExt = path.extname(urlPath);
+            if (urlExt) {
+                ext = urlExt;
+            }
+        } catch (e) {
+            // Keep fallback
+        }
+
+        const localFilename = `question_${questionId}${ext}`;
+        const localPath = path.join(dir, localFilename);
+
+        console.log(`[ImageDownloader] Downloading diagram from ${url} to ${localPath}...`);
+
+        const response = await axios({
+            method: "GET",
+            url: url,
+            responseType: "stream",
+        });
+
+        const writer = fs.createWriteStream(localPath);
+        response.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on("finish", resolve);
+            writer.on("error", reject);
+        });
+
+        console.log(`[ImageDownloader] Successfully downloaded diagram locally for question ${questionId}.`);
+        return `/question-images/${localFilename}`;
+    } catch (err) {
+        console.error(`[ImageDownloader] Error downloading image for question ${questionId}:`, err.message);
+        return url;
+    }
+};
+
+/**
  * Periodically attempts to fetch and store questions for an examination.
  */
 export const fetchAndStoreQuestions = async (examId) => {
@@ -89,6 +144,11 @@ export const fetchAndStoreQuestions = async (examId) => {
             
             // Store in SQLite
             for (const q of questions) {
+                let finalImageUrl = null;
+                if (q.image_url) {
+                    finalImageUrl = await downloadImage(q.image_url, q.id);
+                }
+
                 await Question.upsert({
                     id: q.id,
                     paper_fk_id: q.paper_fk_id,
@@ -101,6 +161,7 @@ export const fetchAndStoreQuestions = async (examId) => {
                     option3: q.option3,
                     option4: q.option4,
                     full_marks: q.full_marks,
+                    image_url: finalImageUrl,
                 });
             }
 

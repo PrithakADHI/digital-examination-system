@@ -21,6 +21,11 @@ const SubjectPaper = sequelize.define(
       type: DataTypes.JSONB,
       allowNull: true,
     },
+    status: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: "DRAFT",
+    },
   },
   {
     tableName: "SubjectPaper",

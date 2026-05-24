@@ -138,6 +138,7 @@ export const getQuestionsForProxy = async (req, res) => {
                 question_type: q.question_type,
                 question_txt: decrypt(q.question_txt, paperKey),
                 full_marks: q.full_marks,
+                image_url: q.image_url ? decrypt(q.image_url, paperKey) : null,
             };
 
             if (q.question_type === "MCQ") {

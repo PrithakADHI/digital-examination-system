@@ -1,14 +1,33 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ExaminationsList from "../components/examinations/ExaminationsList.jsx";
 import {
   useDeleteExamination,
+  useExaminations,
 } from "../hooks/useAdminQueries.js";
+
+const EXAMINATIONS_PER_PAGE = 10;
 
 export default function ExaminationsPage() {
   const navigate = useNavigate();
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const deleteMutation = useDeleteExamination();
+  const examinationsQuery = useExaminations({
+    page,
+    limit: EXAMINATIONS_PER_PAGE,
+    search: searchTerm || undefined,
+  });
+
+  const examinations = useMemo(() => examinationsQuery.data?.data ?? [], [examinationsQuery.data]);
+  const pagination = examinationsQuery.data?.pagination ?? {
+    total: 0,
+    page: 1,
+    limit: EXAMINATIONS_PER_PAGE,
+    totalPages: 0,
+  };
 
   const handleCreateNew = () => navigate("/admin/examinations/new");
   const handleEditExam = (id) => navigate(`/admin/examinations/edit/${id}`);
@@ -23,11 +42,48 @@ export default function ExaminationsPage() {
     });
   };
   const handleDeleteCancel = () => setDeleteTarget(null);
+  const handleSearchSubmit = () => {
+    setSearchTerm(searchInput.trim());
+    setPage(1);
+  };
+  const handleSearchClear = () => {
+    setSearchInput("");
+    setSearchTerm("");
+    setPage(1);
+  };
+
+  if (examinationsQuery.isLoading) {
+    return (
+      <div className="flex justify-center py-20 bg-base-100/50 rounded-2xl glass-card">
+        <div className="flex flex-col items-center gap-4">
+          <span className="loading loading-spinner loading-lg text-primary" />
+          <span className="text-sm font-bold opacity-40 tracking-widest uppercase">Fetching Examinations...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (examinationsQuery.isError) {
+    return (
+      <div className="alert alert-error glass-card border-error/20 shadow-xl animate-fade-in">
+        <span className="font-bold">{examinationsQuery.error?.response?.data?.error ?? examinationsQuery.error?.message ?? "Failed to load examinations"}</span>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in space-y-6">
 
       <ExaminationsList
+        examinations={examinations}
+        pagination={pagination}
+        page={page}
+        setPage={setPage}
+        searchInput={searchInput}
+        searchTerm={searchTerm}
+        onSearchInputChange={setSearchInput}
+        onSearchSubmit={handleSearchSubmit}
+        onSearchClear={handleSearchClear}
         onSelectExam={handleEditExam}
         onCreateNew={handleCreateNew}
         onDelete={handleDeleteClick}

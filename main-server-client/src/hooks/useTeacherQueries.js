@@ -37,6 +37,15 @@ export function useAssignedQuestionsToWrite() {
   });
 }
 
+export function useQuestionPaper(subjectId) {
+  return useQuery({
+    queryKey: ["questionPaper", subjectId],
+    queryFn: () => teacherApi.getQuestionPaperById(subjectId),
+    enabled: !!subjectId,
+    retry: false,
+  });
+}
+
 export function useAssignedPapersToCheck() {
   return useQuery({
     queryKey: teacherKeys.assignedPapersToCheck(),
@@ -76,6 +85,75 @@ export function useAssignQuestionMark() {
     onSuccess: (_, variables) => {
       // Logic for invalidating specific submission/student lists can be added here
       queryClient.invalidateQueries({ queryKey: teacherKeys.all });
+    },
+  });
+}
+
+export function useTeacherCenterStudents() {
+  return useQuery({
+    queryKey: teacherKeys.centerStudents(),
+    queryFn: teacherApi.getTeacherCenterStudents,
+  });
+}
+
+export function useTeacherStudentDetail(studentId, options = {}) {
+  return useQuery({
+    queryKey: teacherKeys.studentDetail(studentId),
+    queryFn: () => teacherApi.getTeacherStudentDetail(studentId),
+    enabled: !!studentId && (options.enabled !== false),
+    ...options,
+  });
+}
+
+export function useCreateTeacherStudent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: teacherApi.createTeacherStudent,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teacherKeys.centerStudents() });
+    },
+  });
+}
+
+export function useUpdateTeacherStudent(studentId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => teacherApi.updateTeacherStudent(studentId, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teacherKeys.centerStudents() });
+      qc.invalidateQueries({ queryKey: teacherKeys.studentDetail(studentId) });
+    },
+  });
+}
+
+export function useDeactivateTeacherStudent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: teacherApi.deactivateTeacherStudent,
+    onSuccess: (_, studentId) => {
+      qc.invalidateQueries({ queryKey: teacherKeys.centerStudents() });
+      qc.invalidateQueries({ queryKey: teacherKeys.studentDetail(studentId) });
+    },
+  });
+}
+
+export function useActivateTeacherStudent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: teacherApi.activateTeacherStudent,
+    onSuccess: (_, studentId) => {
+      qc.invalidateQueries({ queryKey: teacherKeys.centerStudents() });
+      qc.invalidateQueries({ queryKey: teacherKeys.studentDetail(studentId) });
+    },
+  });
+}
+
+export function useDeleteTeacherStudent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: teacherApi.deleteTeacherStudent,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teacherKeys.centerStudents() });
     },
   });
 }

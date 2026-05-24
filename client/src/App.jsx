@@ -24,7 +24,7 @@ import ExaminationView from "./components/ExaminationView.jsx";
 import AdminLogin from "./components/AdminLogin.jsx";
 import StudentSelection from "./components/StudentSelection.jsx";
 
-const PROXY_URL = "http://localhost:8001";
+const PROXY_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
 
 function MainApp() {
   const { theme, toggleTheme } = useTheme();

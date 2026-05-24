@@ -153,10 +153,69 @@ const assignStudentsSchema = Joi.object({
 
 // --- Examination Controllers ---
 
+function validateExaminationDates(subjects, result_time_ts) {
+    if (!subjects || subjects.length === 0) {
+        return null;
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const minStartTime = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    // 1. Validate that each subject starts at least 2 weeks from now
+    for (const sub of subjects) {
+        if (!sub.exam_startTime_ts) continue;
+        const subDate = new Date(sub.exam_startTime_ts);
+        if (subDate < minStartTime) {
+            return `Subject '${sub.subject_name_txt}' start time must be at least 2 weeks from today (no earlier than ${minStartTime.toLocaleDateString()}).`;
+        }
+    }
+
+    // 2. Validate that subjects are in chronological order (at least 24 hours between consecutive subjects)
+    for (let i = 1; i < subjects.length; i++) {
+        const prev = subjects[i - 1];
+        const curr = subjects[i];
+        if (!prev.exam_startTime_ts || !curr.exam_startTime_ts) continue;
+
+        const prevDate = new Date(prev.exam_startTime_ts);
+        const currDate = new Date(curr.exam_startTime_ts);
+        const minAllowedNext = new Date(prevDate.getTime() + 24 * 60 * 60 * 1000 - 60000); // 1 minute grace
+
+        if (currDate < minAllowedNext) {
+            return `Subject '${curr.subject_name_txt}' must start at least 24 hours after '${prev.subject_name_txt}' (${prevDate.toLocaleDateString()}).`;
+        }
+    }
+
+    // 3. Validate result date time (must be at least 2 weeks after the start of the final subject)
+    if (result_time_ts) {
+        const subjectDates = subjects
+            .map((s) => s.exam_startTime_ts)
+            .filter(Boolean)
+            .map((d) => new Date(d).getTime());
+
+        if (subjectDates.length > 0) {
+            const finalSubjectTime = Math.max(...subjectDates);
+            const minResultTime = new Date(finalSubjectTime + 14 * 24 * 60 * 60 * 1000 - 60000); // 1 minute grace
+            const resultDate = new Date(result_time_ts);
+
+            if (resultDate < minResultTime) {
+                return `Result publication date must be at least 2 weeks after the final subject's start date (no earlier than ${minResultTime.toLocaleDateString()}).`;
+            }
+        }
+    }
+
+    return null;
+}
+
 export const createComprehensiveExamination = async (req, res) => {
     const { error, value } = comprehensiveExamSchema.validate(req.body);
     if (error) {
         return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const dateValidationError = validateExaminationDates(value.subjects, value.result_time_ts);
+    if (dateValidationError) {
+        return res.status(400).json({ error: dateValidationError });
     }
 
     // 0. Validate that all centers exist (using a raw SQL query)
@@ -310,6 +369,30 @@ export const getAllExaminations = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
+        const normalizedSearch = req.query.search?.trim();
+        const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
+
+        const searchClause = normalizedSearch
+            ? `
+                WHERE (
+                    CAST(e.id AS TEXT) ILIKE :searchPattern
+                    OR COALESCE(e."exam_name_txt", '') ILIKE :searchPattern
+                    OR CAST(
+                        (SELECT MIN(esub."exam_startTime_ts") FROM public."ExaminationSubject" esub WHERE esub.exam_fk_id = e.id)
+                        AS TEXT
+                    ) ILIKE :searchPattern
+                    OR CAST(e."result_time_ts" AS TEXT) ILIKE :searchPattern
+                    OR EXISTS (
+                        SELECT 1
+                        FROM public."ExaminationCenter" c
+                        WHERE c.id::text IN (
+                            SELECT jsonb_array_elements_text(e.center_fk_list)
+                        )
+                        AND COALESCE(c.center_name_txt, '') ILIKE :searchPattern
+                    )
+                )
+            `
+            : "";
 
         const examinations = await sequelize.query(
             `
@@ -325,18 +408,28 @@ export const getAllExaminations = async (req, res) => {
                      '[]'
                    ) AS centers_detail
             FROM public.examinations e
+            ${searchClause}
             ORDER BY e."createdAt_ts" DESC 
             LIMIT :limit OFFSET :offset
             `,
             {
-                replacements: { limit, offset },
+                replacements: { limit, offset, ...(searchPattern ? { searchPattern } : {}) },
                 type: Sequelize.QueryTypes.SELECT,
             }
         );
 
+        const countQuery = `
+            SELECT COUNT(*) as count
+            FROM public.examinations e
+            ${searchClause}
+        `;
+
         const [totalResult] = await sequelize.query(
-            `SELECT COUNT(*) as count FROM public.examinations`,
-            { type: Sequelize.QueryTypes.SELECT }
+            countQuery,
+            {
+                replacements: searchPattern ? { searchPattern } : {},
+                type: Sequelize.QueryTypes.SELECT,
+            }
         );
 
         const total = parseInt(totalResult.count);
@@ -400,6 +493,11 @@ export const updateExamination = async (req, res) => {
     const { error, value } = comprehensiveExamSchema.validate(req.body);
     if (error) {
         return res.status(400).json({ error: error.details[0].message });
+    }
+
+    const dateValidationError = validateExaminationDates(value.subjects, value.result_time_ts);
+    if (dateValidationError) {
+        return res.status(400).json({ error: dateValidationError });
     }
     if (value.center_fk_list && value.center_fk_list.length > 0) {
         try {
@@ -1298,5 +1396,204 @@ export const activateUser = async (req, res) => {
         res.status(200).json({ message: "User activated" });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+};
+
+export const getQuestionsReviewList = async (req, res) => {
+    try {
+        const papers = await sequelize.query(
+            `
+            SELECT 
+                es.id AS "subject_id",
+                es.subject_name_txt,
+                es.full_marks,
+                es.pass_marks,
+                es."exam_startTime_ts",
+                e.id AS "exam_id",
+                e.exam_name_txt,
+                u.id AS "setter_id",
+                (u.firstname_txt || ' ' || u.lastname_txt) AS "setter_name",
+                sp.id AS "paper_id",
+                COALESCE(sp.status, 'NOT_STARTED') AS "paper_status",
+                sp.exam_batch_year,
+                (es."exam_startTime_ts" - INTERVAL '7 days') AS "review_deadline",
+                CASE 
+                    WHEN NOW() >= (es."exam_startTime_ts" - INTERVAL '7 days') THEN true 
+                    ELSE false 
+                END AS "is_locked"
+            FROM public."ExaminationSubject" es
+            JOIN public.examinations e ON es.exam_fk_id = e.id
+            JOIN public."User" u ON es.exam_setter_user_fk_id = u.id
+            LEFT JOIN public."SubjectPaper" sp ON sp.subject_fk_id = es.id
+            ORDER BY es."exam_startTime_ts" ASC;
+            `,
+            {
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        res.status(200).json({
+            message: "Assigned review papers fetched successfully.",
+            data: papers,
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Error fetching review papers: " + err.message });
+    }
+};
+
+export const getQuestionsReviewDetail = async (req, res) => {
+    try {
+        const { paperId } = req.params;
+
+        // Fetch subject details for this paper
+        const [paperDetails] = await sequelize.query(
+            `
+            SELECT 
+                sp.id AS "paper_id",
+                sp.status AS "paper_status",
+                sp.exam_batch_year,
+                es.id AS "subject_id",
+                es.subject_name_txt,
+                es."exam_startTime_ts",
+                e.id AS "exam_id",
+                e.exam_name_txt,
+                u.id AS "setter_id",
+                (u.firstname_txt || ' ' || u.lastname_txt) AS "setter_name"
+            FROM public."SubjectPaper" sp
+            JOIN public."ExaminationSubject" es ON sp.subject_fk_id = es.id
+            JOIN public.examinations e ON es.exam_fk_id = e.id
+            JOIN public."User" u ON es.exam_setter_user_fk_id = u.id
+            WHERE sp.id = :paperId
+            `,
+            {
+                replacements: { paperId },
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        if (!paperDetails) {
+            return res.status(404).json({ error: "Subject paper not found." });
+        }
+
+        // Verify lockout deadline
+        const startTime = new Date(paperDetails.exam_startTime_ts);
+        const lockoutDeadline = new Date(startTime.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const now = new Date();
+
+        if (now >= lockoutDeadline) {
+            return res.status(403).json({
+                error: "Forbidden: Question review period has ended and the paper is locked under security protocol.",
+                lockoutDeadline,
+            });
+        }
+
+        // Fetch encrypted questions
+        const questions = await sequelize.query(
+            `
+            SELECT pq.*, eat.aes_256_key AS "encrypted_key"
+            FROM public."PaperQuestion" pq
+            LEFT JOIN public."ExamAnswerToken" eat ON pq.id = eat.question_fk_id
+            WHERE pq.paper_fk_id = :paperId
+            ORDER BY pq.id ASC;
+            `,
+            {
+                replacements: { paperId },
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        // Decrypt questions
+        const masterKeyHex = process.env.AES_MASTER_KEY;
+        if (!masterKeyHex) {
+            throw new Error("AES_MASTER_KEY not found in .env");
+        }
+        const masterKey = Buffer.from(masterKeyHex, "hex");
+
+        const decryptedQuestions = questions.map((q) => {
+            if (!q.encrypted_key) return q;
+
+            // Decrypt paper key
+            const paperKeyHex = decrypt(q.encrypted_key, masterKey);
+            const paperKey = Buffer.from(paperKeyHex, "hex");
+
+            // Decrypt question details
+            const baseQuestion = {
+                id: q.id,
+                question_type: q.question_type,
+                question_txt: decrypt(q.question_txt, paperKey),
+                full_marks: q.full_marks,
+                image_url: q.image_url ? decrypt(q.image_url, paperKey) : null,
+            };
+
+            if (q.question_type === "MCQ") {
+                return {
+                    ...baseQuestion,
+                    option1: decrypt(q.option1, paperKey),
+                    option2: decrypt(q.option2, paperKey),
+                    option3: decrypt(q.option3, paperKey),
+                    option4: decrypt(q.option4, paperKey),
+                    correct_option: Number(decrypt(q.correct_option, paperKey)),
+                };
+            }
+
+            return baseQuestion;
+        });
+
+        res.status(200).json({
+            message: "Decrypted question paper fetched for review successfully.",
+            data: {
+                paper: paperDetails,
+                questions: decryptedQuestions,
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Error fetching questions for review: " + err.message });
+    }
+};
+
+export const approveOrDisapproveQuestionPaper = async (req, res) => {
+    try {
+        const { paperId } = req.params;
+        const { action } = req.body; // 'APPROVE' or 'DISAPPROVE'
+
+        if (!action || !["APPROVE", "DISAPPROVE"].includes(action)) {
+            return res.status(400).json({ error: "Action must be 'APPROVE' or 'DISAPPROVE'." });
+        }
+
+        const nextStatus = action === "APPROVE" ? "APPROVED" : "DISAPPROVED";
+
+        // Check paper existence and lockout deadline
+        const paper = await SubjectPaper.findByPk(paperId);
+        if (!paper) {
+            return res.status(404).json({ error: "Subject paper not found." });
+        }
+
+        const subject = await ExaminationSubject.findByPk(paper.subject_fk_id);
+        if (!subject) {
+            return res.status(404).json({ error: "Associated subject not found." });
+        }
+
+        const startTime = new Date(subject.exam_startTime_ts);
+        const lockoutDeadline = new Date(startTime.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const now = new Date();
+
+        if (now >= lockoutDeadline) {
+            return res.status(403).json({
+                error: "Forbidden: The 1-week lockout deadline has passed. Decisions are locked.",
+                lockoutDeadline,
+            });
+        }
+
+        await paper.update({ status: nextStatus });
+
+        res.status(200).json({
+            message: `Subject paper successfully ${action.toLowerCase()}d.`,
+            data: {
+                paperId: paper.id,
+                status: paper.status,
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Error reviewing subject paper: " + err.message });
     }
 };

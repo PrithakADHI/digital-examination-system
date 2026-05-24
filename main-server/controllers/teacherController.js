@@ -1,5 +1,7 @@
 import Joi from "joi";
 import crypto from "crypto";
+import streamifier from "streamifier";
+import cloudinary from "../cloudinaryConfig.js";
 import SubjectPaper from "../models/SubjectPaper.js";
 import PaperQuestion from "../models/PaperQuestion.js";
 import ExamAnswerToken from "../models/ExamAnswerToken.js";
@@ -45,6 +47,7 @@ const subjectPaperSchema = Joi.object({
     subject_fk_id: Joi.number().required(),
     exam_batch_year: Joi.string().max(100).required(),
     paper_checkers_list: Joi.array().items(Joi.number()).allow(null),
+    status: Joi.string().valid("DRAFT", "SUBMITTED").optional(),
     questions: Joi.array()
         .items(
             Joi.object({
@@ -56,6 +59,7 @@ const subjectPaperSchema = Joi.object({
                 option4: Joi.string().allow(null, "").optional(),
                 correct_option: Joi.number().integer().valid(1, 2, 3, 4).allow(null),
                 full_marks: Joi.number().required(),
+                image_url: Joi.string().allow(null, "").optional(),
             })
         )
         .min(1)
@@ -64,6 +68,45 @@ const subjectPaperSchema = Joi.object({
 
 
 // --- Teacher Controllers ---
+
+/**
+ * POST uploadQuestionImage
+ * Uploads an image to Cloudinary and returns the secure URL.
+ */
+export const uploadQuestionImage = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: "No image file provided." });
+        }
+
+        const streamUpload = (fileBuffer) => {
+            return new Promise((resolve, reject) => {
+                const stream = cloudinary.uploader.upload_stream(
+                    {
+                        folder: "question_images",
+                        resource_type: "image",
+                    },
+                    (error, result) => {
+                        if (error) {
+                            reject(error);
+                        } else {
+                            resolve(result);
+                        }
+                    }
+                );
+                streamifier.createReadStream(fileBuffer).pipe(stream);
+            });
+        };
+
+        const result = await streamUpload(req.file.buffer);
+        res.status(200).json({
+            message: "Image uploaded to Cloudinary successfully.",
+            secure_url: result.secure_url,
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Cloudinary upload failed: " + err.message });
+    }
+};
 
 /**
  * GET getAllQuestionsToSet
@@ -83,15 +126,19 @@ export const getAllQuestionsToSet = async (req, res) => {
                 es.pass_marks,
                 e.id AS "exam_id",
                 e.exam_name_txt,
-                es."exam_startTime_ts"
+                es."exam_startTime_ts",
+                sp.id AS "paper_id",
+                COALESCE(sp.status, 'NOT_STARTED') AS "paper_status",
+                sp.exam_batch_year,
+                (es."exam_startTime_ts" - INTERVAL '7 days') AS "review_deadline",
+                CASE 
+                    WHEN NOW() >= (es."exam_startTime_ts" - INTERVAL '7 days') THEN true 
+                    ELSE false 
+                END AS "is_locked"
             FROM public."ExaminationSubject" es
             JOIN public.examinations e ON es.exam_fk_id = e.id
+            LEFT JOIN public."SubjectPaper" sp ON sp.subject_fk_id = es.id
             WHERE es.exam_setter_user_fk_id = :userId
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM public."SubjectPaper" sp
-                  WHERE sp.subject_fk_id = es.id
-              )
             ORDER BY es."exam_startTime_ts" ASC;
             `,
             {
@@ -133,25 +180,57 @@ export const createQuestion = async (req, res) => {
         });
     }
 
-    // Verify that the user is the assigned setter for this subject
+    // Verify ownership and lockout deadline
+    let subject;
     try {
-        const [subject] = await sequelize.query(
-            `SELECT exam_setter_user_fk_id FROM public."ExaminationSubject" WHERE id = :id`,
+        const [subRow] = await sequelize.query(
+            `SELECT exam_setter_user_fk_id, "exam_startTime_ts" FROM public."ExaminationSubject" WHERE id = :id`,
             {
                 replacements: { id: value.subject_fk_id },
                 type: Sequelize.QueryTypes.SELECT,
             }
         );
 
-        if (!subject) {
+        if (!subRow) {
             return res.status(404).json({ error: "Examination subject not found." });
         }
 
-        if (parseInt(subject.exam_setter_user_fk_id) !== parseInt(req.user.id)) {
+        if (parseInt(subRow.exam_setter_user_fk_id) !== parseInt(req.user.id)) {
             return res.status(403).json({ error: "Forbidden: You are not the assigned setter for this subject." });
         }
+
+        subject = subRow;
     } catch (err) {
         return res.status(500).json({ error: "Error verifying subject setter: " + err.message });
+    }
+
+    // Enforce 1-week lockout deadline
+    const startTime = new Date(subject.exam_startTime_ts);
+    const lockoutDeadline = new Date(startTime.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+
+    if (now >= lockoutDeadline) {
+        return res.status(403).json({
+            error: "Forbidden: The 1-week question review deadline has passed. This paper is locked.",
+            lockoutDeadline,
+        });
+    }
+
+    // Check if a paper already exists
+    let existingPaper;
+    try {
+        existingPaper = await SubjectPaper.findOne({
+            where: { subject_fk_id: value.subject_fk_id }
+        });
+
+        // Enforce status checks: Can only edit if status is DRAFT or DISAPPROVED
+        if (existingPaper && !["DRAFT", "DISAPPROVED"].includes(existingPaper.status)) {
+            return res.status(400).json({
+                error: `Cannot modify this paper. The current status is '${existingPaper.status}'. Only DRAFT or DISAPPROVED papers can be updated.`,
+            });
+        }
+    } catch (err) {
+        return res.status(500).json({ error: "Error checking existing subject paper: " + err.message });
     }
 
     const t = await sequelize.transaction();
@@ -170,17 +249,61 @@ export const createQuestion = async (req, res) => {
             Buffer.from(masterKeyHex, "hex")
         );
 
-        // 3. Create the SubjectPaper
-        const paper = await SubjectPaper.create(
-            {
-                subject_fk_id: value.subject_fk_id,
-                exam_batch_year: value.exam_batch_year,
-                paper_checkers_list: value.paper_checkers_list,
-            },
-            { transaction: t }
-        );
+        let paper;
 
-        // 4. Encrypt and create questions
+        if (existingPaper) {
+            // Update existing paper status & batch year
+            await existingPaper.update(
+                {
+                    exam_batch_year: value.exam_batch_year,
+                    status: value.status || "SUBMITTED",
+                },
+                { transaction: t }
+            );
+
+            // Clean up old questions & tokens in a dialect-safe way
+            const oldQuestions = await PaperQuestion.findAll({
+                where: { paper_fk_id: existingPaper.id },
+                attributes: ["id"],
+                transaction: t
+            });
+            const oldQuestionIds = oldQuestions.map((q) => q.id);
+
+            if (oldQuestionIds.length > 0) {
+                await ExamAnswerToken.destroy({
+                    where: {
+                        question_fk_id: {
+                            [Sequelize.Op.in]: oldQuestionIds
+                        }
+                    },
+                    transaction: t
+                });
+
+                await PaperQuestion.destroy({
+                    where: {
+                        id: {
+                            [Sequelize.Op.in]: oldQuestionIds
+                        }
+                    },
+                    transaction: t
+                });
+            }
+
+            paper = existingPaper;
+        } else {
+            // Create a brand new SubjectPaper
+            paper = await SubjectPaper.create(
+                {
+                    subject_fk_id: value.subject_fk_id,
+                    exam_batch_year: value.exam_batch_year,
+                    paper_checkers_list: value.paper_checkers_list,
+                    status: value.status || "SUBMITTED",
+                },
+                { transaction: t }
+            );
+        }
+
+        // 3. Encrypt and create new questions
         for (const q of value.questions) {
             const encryptedData = {
                 paper_fk_id: paper.id,
@@ -192,11 +315,12 @@ export const createQuestion = async (req, res) => {
                 option4: q.option4 ? encrypt(q.option4, paperKey) : null,
                 correct_option: q.correct_option ? encrypt(String(q.correct_option), paperKey) : null,
                 full_marks: q.full_marks,
+                image_url: q.image_url ? encrypt(q.image_url, paperKey) : null,
             };
 
             const question = await PaperQuestion.create(encryptedData, { transaction: t });
 
-            // 5. Store the encrypted paper key for this question
+            // Store the encrypted paper key for this question
             await ExamAnswerToken.create(
                 {
                     question_fk_id: question.id,
@@ -208,16 +332,144 @@ export const createQuestion = async (req, res) => {
 
         await t.commit();
 
-        res.status(201).json({
-            message: "Subject paper and questions created successfully with encryption.",
+        res.status(existingPaper ? 200 : 201).json({
+            message: `Subject paper and questions ${existingPaper ? "updated" : "created"} successfully with encryption.`,
             data: {
                 paperId: paper.id,
+                status: paper.status,
                 questionsCount: value.questions.length,
             },
         });
     } catch (err) {
         await t.rollback();
-        res.status(500).json({ error: "Error creating subject paper: " + err.message });
+        res.status(500).json({ error: "Error saving subject paper: " + err.message });
+    }
+};
+
+/**
+ * GET getQuestionPaperById
+ * Retrieves the decrypted question paper for a given subject if the logged-in teacher is the setter
+ * and it is before the 1-week lockout deadline.
+ */
+export const getQuestionPaperById = async (req, res) => {
+    try {
+        const { subjectId } = req.params;
+        const userId = req.user.id;
+
+        // Fetch subject details
+        const [subject] = await sequelize.query(
+            `
+            SELECT 
+                es.id AS "subject_id",
+                es.subject_name_txt,
+                es.exam_setter_user_fk_id,
+                es."exam_startTime_ts",
+                sp.id AS "paper_id",
+                sp.status AS "paper_status",
+                sp.exam_batch_year
+            FROM public."ExaminationSubject" es
+            LEFT JOIN public."SubjectPaper" sp ON sp.subject_fk_id = es.id
+            WHERE es.id = :subjectId
+            `,
+            {
+                replacements: { subjectId },
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        if (!subject) {
+            return res.status(404).json({ error: "Examination subject not found." });
+        }
+
+        // Verify setter ownership
+        if (parseInt(subject.exam_setter_user_fk_id) !== parseInt(userId)) {
+            return res.status(403).json({ error: "Forbidden: You are not the assigned setter for this subject." });
+        }
+
+        // Verify lockout deadline
+        const startTime = new Date(subject.exam_startTime_ts);
+        const lockoutDeadline = new Date(startTime.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const now = new Date();
+
+        if (now >= lockoutDeadline) {
+            return res.status(403).json({
+                error: "Forbidden: Question review period has ended and this paper is strictly locked.",
+                lockoutDeadline,
+            });
+        }
+
+        // If no paper exists yet, return empty list of questions
+        if (!subject.paper_id) {
+            return res.status(200).json({
+                message: "No paper created yet.",
+                data: {
+                    subject,
+                    questions: [],
+                }
+            });
+        }
+
+        // Fetch encrypted questions
+        const questions = await sequelize.query(
+            `
+            SELECT pq.*, eat.aes_256_key AS "encrypted_key"
+            FROM public."PaperQuestion" pq
+            LEFT JOIN public."ExamAnswerToken" eat ON pq.id = eat.question_fk_id
+            WHERE pq.paper_fk_id = :paperId
+            ORDER BY pq.id ASC;
+            `,
+            {
+                replacements: { paperId: subject.paper_id },
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
+
+        // Decrypt questions
+        const masterKeyHex = process.env.AES_MASTER_KEY;
+        if (!masterKeyHex) {
+            throw new Error("AES_MASTER_KEY not found in .env");
+        }
+        const masterKey = Buffer.from(masterKeyHex, "hex");
+
+        const decryptedQuestions = questions.map((q) => {
+            if (!q.encrypted_key) return q;
+
+            // Decrypt the paper key using master key
+            const paperKeyHex = decrypt(q.encrypted_key, masterKey);
+            const paperKey = Buffer.from(paperKeyHex, "hex");
+
+            // Decrypt question details
+            const baseQuestion = {
+                id: q.id,
+                question_type: q.question_type,
+                question_txt: decrypt(q.question_txt, paperKey),
+                full_marks: q.full_marks,
+                image_url: q.image_url ? decrypt(q.image_url, paperKey) : null,
+            };
+
+            if (q.question_type === "MCQ") {
+                return {
+                    ...baseQuestion,
+                    option1: decrypt(q.option1, paperKey),
+                    option2: decrypt(q.option2, paperKey),
+                    option3: decrypt(q.option3, paperKey),
+                    option4: decrypt(q.option4, paperKey),
+                    correct_option: Number(decrypt(q.correct_option, paperKey)),
+                };
+            }
+
+            return baseQuestion;
+        });
+
+        res.status(200).json({
+            message: "Draft question paper fetched and decrypted successfully.",
+            data: {
+                subject,
+                questions: decryptedQuestions,
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Error fetching draft question paper: " + err.message });
     }
 };
 
@@ -707,6 +959,11 @@ export const assignQuestionMark = async (req, res) => {
 export const getStudentById = async (req, res) => {
     try {
         const { student_id } = req.params;
+        const teacherCenterId = req.user.center_fk_id;
+
+        if (!teacherCenterId) {
+            return res.status(400).json({ error: "Teacher has no assigned center." });
+        }
 
         // 1. Fetch student basic info
         const [student] = await sequelize.query(
@@ -718,9 +975,10 @@ export const getStudentById = async (req, res) => {
                 phone_num_txt, 
                 stud_batch_year, 
                 stud_exam_symbol_no, 
-                stud_exam_reg_no 
+                stud_exam_reg_no,
+                center_fk_id
             FROM public."User" 
-            WHERE id = :student_id`,
+            WHERE id = :student_id AND role = 'STUDENT'`,
             {
                 replacements: { student_id },
                 type: Sequelize.QueryTypes.SELECT,
@@ -731,27 +989,41 @@ export const getStudentById = async (req, res) => {
             return res.status(404).json({ error: "Student not found." });
         }
 
+        // Check if teacher is in the same center
+        if (parseInt(student.center_fk_id) !== parseInt(teacherCenterId)) {
+            return res.status(403).json({ error: "Forbidden: Student is not in your center." });
+        }
+
         // 2. Fetch all results for the student
         const results = await sequelize.query(
             `
             SELECT 
-                sam.id AS result_id,
-                sam.marks_obtained,
-                sam.feedback,
+                e.id AS exam_id,
+                e.exam_name_txt,
+                es.id AS subject_id,
                 es.subject_name_txt,
                 es.full_marks,
                 es.pass_marks,
-                e.exam_name_txt,
-                es."exam_startTime_ts",
-                sp.exam_batch_year
-            FROM public."StudentAnswerMarks" sam
-            JOIN public."StudentQuestionAnswer" sqa ON sam.stud_answer_fk_id = sqa.id
-            JOIN public."PaperQuestion" pq ON sqa.exam_question_fk_id = pq.id
-            JOIN public."SubjectPaper" sp ON pq.paper_fk_id = sp.id
-            JOIN public."ExaminationSubject" es ON sp.subject_fk_id = es.id
-            JOIN public.examinations e ON es.exam_fk_id = e.id
-            WHERE sam.stud_user_fk_id = :student_id
-            ORDER BY es."exam_startTime_ts" DESC;
+                est.status AS exam_status,
+                est.submitted_at AS exam_submitted_at,
+                (
+                    SELECT SUM(sam.marks_obtained)
+                    FROM public."StudentAnswerMarks" sam
+                    JOIN public."StudentQuestionAnswer" sqa ON sam.stud_answer_fk_id = sqa.id
+                    WHERE sqa.stud_user_fk_id = :student_id
+                      AND sqa.subject_fk_id = es.id
+                ) AS total_marks_obtained,
+                (
+                    SELECT COUNT(sqa.id)
+                    FROM public."StudentQuestionAnswer" sqa
+                    WHERE sqa.stud_user_fk_id = :student_id
+                      AND sqa.subject_fk_id = es.id
+                ) AS answers_submitted_count
+            FROM public."ExamStudent" est
+            JOIN public.examinations e ON est.exam_fk_id = e.id
+            JOIN public."ExaminationSubject" es ON es.exam_fk_id = e.id
+            WHERE est.student_fk_id = :student_id
+            ORDER BY e."createdAt_ts" DESC, es.id ASC;
             `,
             {
                 replacements: { student_id },
@@ -779,45 +1051,277 @@ export const getAllStudentInTeacherCenter = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        const users = await sequelize.query(
-            `
-            SELECT 
-                u.id, 
-                (u.firstname_txt || ' ' || u.lastname_txt) AS "full_name", 
-                u.username, 
-                u.email_txt, 
-                u.phone_num_txt, 
-                u.role,
-                u.stud_batch_year, 
-                u.stud_exam_symbol_no, 
-                ec.center_name_txt
-            FROM public."User" u
-            JOIN public."ExaminationCenter" ec ON u.center_fk_id = ec.id
-            WHERE u.center_fk_id = (SELECT center_fk_id FROM public."User" WHERE id = :userId)
-              AND u.role = 'STUDENT'
-            ORDER BY u.firstname_txt ASC;
-            `,
+        const [teacherCenter] = await sequelize.query(
+            `SELECT u.center_fk_id, ec.center_name_txt 
+             FROM public."User" u 
+             LEFT JOIN public."ExaminationCenter" ec ON u.center_fk_id = ec.id 
+             WHERE u.id = :userId`,
             {
                 replacements: { userId },
                 type: Sequelize.QueryTypes.SELECT,
             }
         );
 
-        if (users.length === 0) {
-            return res.status(404).json({ message: "No students found for this center." });
+        if (!teacherCenter || !teacherCenter.center_fk_id) {
+            return res.status(200).json({
+                message: "Teacher has no assigned center.",
+                data: {
+                    center_name: "No Assigned Center",
+                    students: []
+                }
+            });
         }
 
-        const responseData = {
-            center_name: users[0].center_name_txt,
-            students: users
-        };
+        const users = await sequelize.query(
+            `
+            SELECT 
+                u.id, 
+                (u.firstname_txt || ' ' || u.lastname_txt) AS "full_name", 
+                u.firstname_txt,
+                u.lastname_txt,
+                u.username, 
+                u.email_txt, 
+                u.phone_num_txt, 
+                u.role,
+                u.stud_batch_year, 
+                u.stud_exam_symbol_no,
+                u.stud_exam_reg_no,
+                u.is_active,
+                ec.center_name_txt
+            FROM public."User" u
+            JOIN public."ExaminationCenter" ec ON u.center_fk_id = ec.id
+            WHERE u.center_fk_id = :centerId
+              AND u.role = 'STUDENT'
+            ORDER BY u.firstname_txt ASC;
+            `,
+            {
+                replacements: { centerId: teacherCenter.center_fk_id },
+                type: Sequelize.QueryTypes.SELECT,
+            }
+        );
 
         res.status(200).json({
             message: "Center students fetched successfully",
-            data: responseData,
+            data: {
+                center_name: teacherCenter.center_name_txt,
+                students: users
+            },
         });
     } catch (err) {
         res.status(500).json({ error: "Error fetching center students: " + err.message });
+    }
+};
+
+// --- Teacher Student CRUD Controllers ---
+
+const batchYearSchema = Joi.number().integer().min(2020).max(new Date().getFullYear() + 10);
+
+const normalizeName = (value) => {
+    const cleanValue = value.trim();
+    if (!cleanValue) return cleanValue;
+    return cleanValue.charAt(0).toUpperCase() + cleanValue.slice(1).toLowerCase();
+};
+
+const createStudentSchema = Joi.object({
+    firstname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).required().messages({
+        "string.pattern.base": "First name must contain letters only.",
+    }),
+    lastname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).required().messages({
+        "string.pattern.base": "Last name must contain letters only.",
+    }),
+    role: Joi.string().valid("STUDENT").default("STUDENT"),
+    username: Joi.string().required(),
+    email_txt: Joi.string().email().allow(null, ""),
+    phone_num_txt: Joi.string().allow(null, ""),
+    stud_batch_year: Joi.string().required(),
+    stud_exam_symbol_no: Joi.string().trim().pattern(/^\d{8,10}$/).required().messages({
+        "string.pattern.base": "Symbol number must contain 8 to 10 digits.",
+    }),
+    stud_exam_reg_no: Joi.string().trim().pattern(/^\d{8,10}$/).required().messages({
+        "string.pattern.base": "Registration number must contain 8 to 10 digits.",
+    }),
+    is_active: Joi.boolean().default(true),
+});
+
+const updateStudentSchema = Joi.object({
+    firstname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).messages({
+        "string.pattern.base": "First name must contain letters only.",
+    }),
+    lastname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).messages({
+        "string.pattern.base": "Last name must contain letters only.",
+    }),
+    email_txt: Joi.string().email().allow(null, ""),
+    phone_num_txt: Joi.string().allow(null, ""),
+    stud_batch_year: Joi.string(),
+    stud_exam_symbol_no: Joi.string().trim().pattern(/^\d{8,10}$/).messages({
+        "string.pattern.base": "Symbol number must contain 8 to 10 digits.",
+    }),
+    stud_exam_reg_no: Joi.string().trim().pattern(/^\d{8,10}$/).messages({
+        "string.pattern.base": "Registration number must contain 8 to 10 digits.",
+    }),
+    is_active: Joi.boolean(),
+}).unknown(true);
+
+export const createStudent = async (req, res) => {
+    const teacherCenterId = req.user.center_fk_id;
+    if (!teacherCenterId) {
+        return res.status(400).json({ error: "Forbidden: Teacher has no assigned center." });
+    }
+
+    const { error, value } = createStudentSchema.validate(req.body);
+    if (error) {
+        return res.status(400).json({ error: error.details[0].message });
+    }
+
+    try {
+        // Check for duplicate username
+        const existing = await User.findOne({ where: { username: value.username } });
+        if (existing) {
+            return res.status(400).json({ error: "Username already exists." });
+        }
+
+        const student = await User.create({
+            ...value,
+            role: "STUDENT",
+            center_fk_id: teacherCenterId,
+            firstname_txt: normalizeName(value.firstname_txt),
+            lastname_txt: normalizeName(value.lastname_txt),
+        });
+
+        res.status(201).json({
+            message: "Student created successfully",
+            data: student,
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Error creating student: " + err.message });
+    }
+};
+
+export const updateStudent = async (req, res) => {
+    const { student_id } = req.params;
+    const teacherCenterId = req.user.center_fk_id;
+
+    if (!teacherCenterId) {
+        return res.status(400).json({ error: "Forbidden: Teacher has no assigned center." });
+    }
+
+    const { error, value } = updateStudentSchema.validate(req.body);
+    if (error) {
+        return res.status(400).json({ error: error.details[0].message });
+    }
+
+    try {
+        const student = await User.findOne({
+            where: { id: student_id, role: "STUDENT" }
+        });
+
+        if (!student) {
+            return res.status(404).json({ error: "Student not found." });
+        }
+
+        if (parseInt(student.center_fk_id) !== parseInt(teacherCenterId)) {
+            return res.status(403).json({ error: "Forbidden: Student is not in your center." });
+        }
+
+        const nextValue = { ...value };
+        if (nextValue.firstname_txt) nextValue.firstname_txt = normalizeName(nextValue.firstname_txt);
+        if (nextValue.lastname_txt) nextValue.lastname_txt = normalizeName(nextValue.lastname_txt);
+
+        await student.update(nextValue);
+
+        res.status(200).json({
+            message: "Student updated successfully",
+            data: student,
+        });
+    } catch (err) {
+        res.status(500).json({ error: "Error updating student: " + err.message });
+    }
+};
+
+export const deactivateStudent = async (req, res) => {
+    const { student_id } = req.params;
+    const teacherCenterId = req.user.center_fk_id;
+
+    if (!teacherCenterId) {
+        return res.status(400).json({ error: "Forbidden: Teacher has no assigned center." });
+    }
+
+    try {
+        const student = await User.findOne({
+            where: { id: student_id, role: "STUDENT" }
+        });
+
+        if (!student) {
+            return res.status(404).json({ error: "Student not found." });
+        }
+
+        if (parseInt(student.center_fk_id) !== parseInt(teacherCenterId)) {
+            return res.status(403).json({ error: "Forbidden: Student is not in your center." });
+        }
+
+        await student.update({ is_active: false });
+
+        res.status(200).json({ message: "Student deactivated successfully" });
+    } catch (err) {
+        res.status(500).json({ error: "Error deactivating student: " + err.message });
+    }
+};
+
+export const activateStudent = async (req, res) => {
+    const { student_id } = req.params;
+    const teacherCenterId = req.user.center_fk_id;
+
+    if (!teacherCenterId) {
+        return res.status(400).json({ error: "Forbidden: Teacher has no assigned center." });
+    }
+
+    try {
+        const student = await User.findOne({
+            where: { id: student_id, role: "STUDENT" }
+        });
+
+        if (!student) {
+            return res.status(404).json({ error: "Student not found." });
+        }
+
+        if (parseInt(student.center_fk_id) !== parseInt(teacherCenterId)) {
+            return res.status(403).json({ error: "Forbidden: Student is not in your center." });
+        }
+
+        await student.update({ is_active: true });
+
+        res.status(200).json({ message: "Student activated successfully" });
+    } catch (err) {
+        res.status(500).json({ error: "Error activating student: " + err.message });
+    }
+};
+
+export const deleteStudent = async (req, res) => {
+    const { student_id } = req.params;
+    const teacherCenterId = req.user.center_fk_id;
+
+    if (!teacherCenterId) {
+        return res.status(400).json({ error: "Forbidden: Teacher has no assigned center." });
+    }
+
+    try {
+        const student = await User.findOne({
+            where: { id: student_id, role: "STUDENT" }
+        });
+
+        if (!student) {
+            return res.status(404).json({ error: "Student not found." });
+        }
+
+        if (parseInt(student.center_fk_id) !== parseInt(teacherCenterId)) {
+            return res.status(403).json({ error: "Forbidden: Student is not in your center." });
+        }
+
+        await student.destroy();
+
+        res.status(200).json({ message: "Student permanently removed" });
+    } catch (err) {
+        res.status(500).json({ error: "Could not delete student: Student may have existing records." });
     }
 };
 

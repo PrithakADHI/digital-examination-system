@@ -26,7 +26,13 @@ export function getExamAverageScores() {
 // Examinations
 export function getExaminations(params = {}) {
   return axiosInstance
-    .get(`${admin}/examination`, { params: { page: params.page ?? 1, limit: params.limit ?? 10 } })
+    .get(`${admin}/examination`, {
+      params: {
+        page: params.page ?? 1,
+        limit: params.limit ?? 10,
+        search: params.search,
+      },
+    })
     .then((res) => ({
       data: res.data?.data ?? [],
       pagination: res.data?.pagination ?? { total: 0, page: 1, limit: 10, totalPages: 0 },
@@ -108,4 +114,17 @@ export function getAnswersBySubject(subjectId) {
 
 export function assignBulkStudents(payload) {
   return axiosInstance.post(`${admin}/assign-bulk-students`, payload).then((res) => res.data);
+}
+
+// Administrative Question Review
+export function getQuestionsReviewList() {
+  return axiosInstance.get(`${admin}/questions-review`).then((res) => res.data?.data ?? res.data);
+}
+
+export function getQuestionsReviewDetail(paperId) {
+  return axiosInstance.get(`${admin}/questions-review/${paperId}`).then((res) => res.data?.data ?? res.data);
+}
+
+export function approveOrDisapproveQuestionPaper(paperId, action) {
+  return axiosInstance.post(`${admin}/questions-review/${paperId}/action`, { action }).then((res) => res.data);
 }

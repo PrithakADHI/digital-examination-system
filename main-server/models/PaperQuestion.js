@@ -44,6 +44,10 @@ const PaperQuestion = sequelize.define(
     full_marks: {
       type: DataTypes.INTEGER,
       allowNull: true
+    },
+    image_url: {
+      type: DataTypes.TEXT("long"),
+      allowNull: true
     }
   },
   {

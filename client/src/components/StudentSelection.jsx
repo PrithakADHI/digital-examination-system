@@ -20,7 +20,7 @@ import {
   Trash2
 } from "lucide-react";
 
-const PROXY_URL = "http://localhost:8001";
+const PROXY_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
 
 export default function StudentSelection({ 
     authToken, 

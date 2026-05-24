@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAssignedQuestionsToWrite } from "../hooks/useTeacherQueries.js";
+import { useQuestionsReviewList } from "../hooks/useAdminQueries.js";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -9,10 +9,10 @@ function formatDate(value) {
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-// Interactive Live Countdown Component for each Subject Card
-function LockoutCountdown({ deadline, isLocked }) {
+// Real-Time Countdown widget for each review item
+function ReviewLockoutCountdown({ deadline, isLocked }) {
   const [timeLeft, setTimeLeft] = useState("");
-  const [urgency, setUrgency] = useState("normal"); // normal, warning, critical
+  const [urgency, setUrgency] = useState("normal");
 
   useEffect(() => {
     if (isLocked || !deadline) {
@@ -61,7 +61,7 @@ function LockoutCountdown({ deadline, isLocked }) {
         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
         </svg>
-        Strictly Locked
+        Locked (Secure)
       </div>
     );
   }
@@ -83,9 +83,9 @@ function LockoutCountdown({ deadline, isLocked }) {
   );
 }
 
-export default function TeacherQuestionsPage() {
+export default function AdminQuestionsReviewPage() {
   const navigate = useNavigate();
-  const { data, isLoading, isError, error, refetch } = useAssignedQuestionsToWrite();
+  const { data, isLoading, isError, error, refetch } = useQuestionsReviewList();
   const [filter, setFilter] = useState("ALL");
 
   const rows = useMemo(() => (Array.isArray(data) ? data : []), [data]);
@@ -100,7 +100,7 @@ export default function TeacherQuestionsPage() {
       <div className="flex justify-center items-center py-24 min-h-[400px]">
         <div className="flex flex-col items-center gap-3">
           <span className="loading loading-spinner loading-lg text-primary" />
-          <span className="text-sm font-bold uppercase tracking-wider text-base-content/40">Loading assignments...</span>
+          <span className="text-sm font-bold uppercase tracking-wider text-base-content/40">Loading review records...</span>
         </div>
       </div>
     );
@@ -115,10 +115,10 @@ export default function TeacherQuestionsPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold tracking-tight">Failed to Load Questions</h2>
-          <p className="text-base-content/60 text-sm max-w-md mx-auto">{error?.response?.data?.error ?? error?.message ?? "An unexpected server connection error occurred."}</p>
-          <button type="button" className="btn btn-primary rounded-xl px-8 shadow-lg shadow-primary/20 font-bold" onClick={() => refetch()}>
-            Retry Loading
+          <h2 className="text-xl font-bold tracking-tight">Failed to load papers for review</h2>
+          <p className="text-base-content/60 text-sm max-w-md mx-auto">{error?.response?.data?.error ?? error?.message ?? "An unexpected connection error occurred."}</p>
+          <button type="button" className="btn btn-primary rounded-xl px-8" onClick={() => refetch()}>
+            Retry
           </button>
         </div>
       </div>
@@ -128,13 +128,13 @@ export default function TeacherQuestionsPage() {
   const getStatusBadge = (status) => {
     switch (status) {
       case "APPROVED":
-        return <span className="badge bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm shadow-emerald-500/5">APPROVED</span>;
+        return <span className="badge bg-emerald-500/10 text-emerald-600 border-emerald-500/20 font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm">APPROVED</span>;
       case "SUBMITTED":
-        return <span className="badge bg-info/10 text-info border-info/20 font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm">SUBMITTED</span>;
+        return <span className="badge bg-info/10 text-info border-info/20 font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm">SUBMITTED FOR REVIEW</span>;
       case "DISAPPROVED":
         return <span className="badge bg-error/10 text-error border-error/20 font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm">REVISION REQUIRED</span>;
       case "DRAFT":
-        return <span className="badge bg-warning/10 text-warning border-warning/20 font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm">DRAFT</span>;
+        return <span className="badge bg-warning/10 text-warning border-warning/20 font-bold text-[10px] px-2.5 py-1.5 rounded-lg shadow-sm">IN DRAFT</span>;
       default:
         return <span className="badge bg-base-300 text-base-content/60 border-base-300 font-bold text-[10px] px-2.5 py-1.5 rounded-lg">NOT STARTED</span>;
     }
@@ -146,9 +146,9 @@ export default function TeacherQuestionsPage() {
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-base-300/40 p-8 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
           <div>
-            <span className="text-[10px] uppercase font-black text-primary tracking-widest block mb-1">FACULTY PORTAL</span>
-            <h1 className="text-3xl font-black tracking-tight">Question Drafting Board</h1>
-            <p className="text-sm text-base-content/50 font-medium mt-1">Manage, draft, and submit questions for your assigned examinations.</p>
+            <span className="text-[10px] uppercase font-black text-primary tracking-widest block mb-1">ADMIN CONTROL</span>
+            <h1 className="text-3xl font-black tracking-tight">Question Paper Audits</h1>
+            <p className="text-sm text-base-content/50 font-medium mt-1">Audit, approve, and track question paper drafting progress and deadlines.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             {["ALL", "NOT_STARTED", "DRAFT", "SUBMITTED", "APPROVED", "DISAPPROVED"].map((st) => (
@@ -170,23 +170,23 @@ export default function TeacherQuestionsPage() {
         <div className="absolute right-0 top-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -z-10" />
       </div>
 
-      {/* Grid List */}
+      {/* Audit cards list */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {filteredRows.length === 0 ? (
           <div className="xl:col-span-2 glass-card border border-base-300/40 rounded-3xl p-16 text-center shadow-sm">
             <div className="w-16 h-16 rounded-full bg-base-200 flex items-center justify-center mx-auto mb-4 text-base-content/30 border border-base-300/40">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-bold tracking-tight">No Question Papers Found</h3>
-            <p className="text-sm text-base-content/40 max-w-sm mx-auto mt-1">There are no assigned subjects matching your selected filter.</p>
+            <h3 className="text-lg font-bold tracking-tight">No Question Papers to Audit</h3>
+            <p className="text-sm text-base-content/40 max-w-sm mx-auto mt-1">No question papers fit the current status selection.</p>
           </div>
         ) : (
           filteredRows.map((row) => {
             const isLocked = row.is_locked;
-            const canEdit = !isLocked && ["NOT_STARTED", "DRAFT", "DISAPPROVED"].includes(row.paper_status);
-            const canViewOnly = !isLocked && ["SUBMITTED", "APPROVED"].includes(row.paper_status);
+            const hasPaper = row.paper_status !== "NOT_STARTED";
+            const canReview = !isLocked && ["SUBMITTED", "APPROVED", "DISAPPROVED"].includes(row.paper_status);
 
             return (
               <div 
@@ -194,8 +194,8 @@ export default function TeacherQuestionsPage() {
                 className={`glass-card rounded-3xl p-6 border transition-all duration-300 hover:shadow-xl flex flex-col justify-between ${
                   isLocked 
                     ? "border-base-300/30 opacity-75 bg-base-300/10" 
-                    : row.paper_status === "DISAPPROVED"
-                    ? "border-error/20 bg-error/[0.01]"
+                    : row.paper_status === "SUBMITTED"
+                    ? "border-info/30 bg-info/[0.01]"
                     : "border-base-300/40"
                 }`}
               >
@@ -205,73 +205,62 @@ export default function TeacherQuestionsPage() {
                     {getStatusBadge(row.paper_status)}
                   </div>
 
-                  <h3 className="text-xl font-bold tracking-tight text-base-content hover:text-primary transition-colors mb-2">
+                  <h3 className="text-xl font-bold tracking-tight text-base-content mb-2">
                     {row.subject_name_txt}
                   </h3>
 
-                  <div className="grid grid-cols-2 gap-4 bg-base-200/40 p-4 rounded-2xl border border-base-300/20 mb-4 text-xs font-semibold text-base-content/70">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-base-content/40 block mb-0.5">Assessment Info</span>
-                      <span>{row.full_marks} Marks (Pass: {row.pass_marks})</span>
+                  <div className="space-y-2 mb-4 text-xs font-semibold text-base-content/70">
+                    <div className="flex justify-between bg-base-200/40 p-3 rounded-xl">
+                      <span className="text-base-content/45 font-bold uppercase tracking-wider text-[10px]">Setter Assignment</span>
+                      <span className="text-primary font-bold">{row.setter_name} (Setter #{row.setter_id})</span>
                     </div>
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-base-content/40 block mb-0.5">Exam Date</span>
-                      <span className="font-medium">{formatDate(row.exam_startTime_ts)}</span>
+                    <div className="grid grid-cols-2 gap-4 bg-base-200/40 p-3 rounded-xl">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-base-content/40 block mb-0.5">Marks Threshold</span>
+                        <span>{row.full_marks} Marks (Pass: {row.pass_marks})</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-base-content/40 block mb-0.5">Exam Date</span>
+                        <span>{formatDate(row.exam_startTime_ts)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-4 border-t border-base-300/30">
                   <div className="flex flex-col">
-                    <span className="text-[10px] uppercase font-bold text-base-content/40 block mb-0.5">Drafting Cutoff</span>
-                    <LockoutCountdown deadline={row.review_deadline} isLocked={isLocked} />
+                    <span className="text-[10px] uppercase font-bold text-base-content/40 block mb-0.5">Review Cutoff Clock</span>
+                    <ReviewLockoutCountdown deadline={row.review_deadline} isLocked={isLocked} />
                   </div>
 
                   <div className="flex gap-2">
-                    {canEdit && (
+                    {canReview && (
                       <button
                         type="button"
-                        className={`btn btn-sm rounded-xl font-bold transition-all px-4 shadow-md ${
-                          row.paper_status === "DISAPPROVED"
-                            ? "btn-error shadow-error/15 text-white hover:scale-105"
-                            : row.paper_status === "DRAFT"
-                            ? "btn-warning shadow-warning/15 hover:scale-105"
-                            : "btn-primary shadow-primary/15 hover:scale-105"
-                        }`}
-                        onClick={() =>
-                          navigate(`/teacher/questions/create/${row.subject_id}`, {
-                            state: { assignedSubject: row },
-                          })
-                        }
+                        className="btn btn-sm btn-primary rounded-xl font-bold hover:scale-105 active:scale-95 transition-all px-5 shadow-md shadow-primary/10"
+                        onClick={() => navigate(`/admin/questions-review/${row.paper_id}`)}
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                         </svg>
-                        {row.paper_status === "DISAPPROVED" 
-                          ? "Revise Paper" 
-                          : row.paper_status === "DRAFT" 
-                          ? "Resume Setting" 
-                          : "Start Setting"
-                        }
+                        Review Paper
                       </button>
                     )}
 
-                    {canViewOnly && (
+                    {!canReview && hasPaper && !isLocked && (
                       <button
                         type="button"
-                        className="btn btn-sm btn-outline border-base-300 rounded-xl hover:bg-base-200 text-base-content/85 font-bold transition-all px-4"
-                        onClick={() =>
-                          navigate(`/teacher/questions/create/${row.subject_id}`, {
-                            state: { assignedSubject: row, readOnly: true },
-                          })
-                        }
+                        className="btn btn-sm btn-outline border-base-300 rounded-xl hover:bg-base-200 text-base-content/50 font-bold transition-all px-4"
+                        onClick={() => navigate(`/admin/questions-review/${row.paper_id}`)}
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1.5 text-base-content/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                        View Paper
+                        Preview Draft
                       </button>
+                    )}
+
+                    {!hasPaper && (
+                      <span className="text-xs text-base-content/40 italic font-semibold py-2">
+                        Drafting not initiated
+                      </span>
                     )}
 
                     {isLocked && (

@@ -4,7 +4,7 @@ import { Play, RotateCcw, Terminal, Clock, AlertCircle, CheckCircle2, X } from "
 import axios from "axios";
 import { useTheme } from "../context/ThemeContext.jsx";
 
-const PROXY_URL = "http://localhost:8001";
+const PROXY_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
 
 const LANGUAGES = [
   { id: "python", name: "Python", defaultCode: 'print("Hello, World!")' },

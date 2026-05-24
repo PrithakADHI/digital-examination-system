@@ -29,7 +29,10 @@ import {
   assignBulkStudentsForChecking,
   getAnswersBySubject,
   deactivateUser,
-  activateUser
+  activateUser,
+  getQuestionsReviewList,
+  getQuestionsReviewDetail,
+  approveOrDisapproveQuestionPaper
 } from "../controllers/adminController.js";
 import { verifyLoggedIn, verifyAdmin } from "../middlewares/authMiddleware.js";
 
@@ -74,6 +77,11 @@ adminRouter.delete("/users/:id", verifyLoggedIn, verifyAdmin, deleteUser);
 // Status Management (Soft Delete)
 adminRouter.patch("/users/:id/deactivate", verifyLoggedIn, verifyAdmin, deactivateUser);
 adminRouter.patch("/users/:id/activate", verifyLoggedIn, verifyAdmin, activateUser);
+
+// Administrative Question Review routes
+adminRouter.get("/questions-review", verifyLoggedIn, verifyAdmin, getQuestionsReviewList);
+adminRouter.get("/questions-review/:paperId", verifyLoggedIn, verifyAdmin, getQuestionsReviewDetail);
+adminRouter.post("/questions-review/:paperId/action", verifyLoggedIn, verifyAdmin, approveOrDisapproveQuestionPaper);
 
 // Student Assignment
 adminRouter.post("/assign-students-for-checking", verifyLoggedIn, verifyAdmin, assignStudentsForChecking);

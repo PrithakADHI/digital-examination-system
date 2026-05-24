@@ -19,6 +19,14 @@ import TeacherAnswersPage from "./pages/TeacherAnswersPage.jsx";
 import TeacherSubmissionsPage from "./pages/TeacherSubmissionsPage.jsx";
 import TeacherGradingPage from "./pages/TeacherGradingPage.jsx";
 import AnswersPage from "./pages/AnswersPage.jsx";
+import TeacherStudentsPage from "./pages/TeacherStudentsPage.jsx";
+import AdminQuestionsReviewPage from "./pages/AdminQuestionsReviewPage.jsx";
+import AdminQuestionsReviewDetailPage from "./pages/AdminQuestionsReviewDetailPage.jsx";
+
+import StudentLayout from "./components/layout/StudentLayout.jsx";
+import StudentDashboardPage from "./pages/StudentDashboardPage.jsx";
+import StudentExaminationsPage from "./pages/StudentExaminationsPage.jsx";
+import StudentExaminationDetailPage from "./pages/StudentExaminationDetailPage.jsx";
 
 function RootRedirect() {
   const storedUser = localStorage.getItem("user");
@@ -28,12 +36,16 @@ function RootRedirect() {
       if (user.role === "TEACHER") {
         return <Navigate to="/teacher" replace />;
       }
+      if (user.role === "STUDENT") {
+        return <Navigate to="/student" replace />;
+      }
     } catch (e) {
       console.error("Failed to parse user data", e);
     }
   }
   return <Navigate to="/admin" replace />;
 }
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -69,6 +81,8 @@ function App() {
                 <Route path="centers" element={<ExamCentersPage />} />
                 <Route path="users" element={<UserPage />} />
                 <Route path="answers" element={<AnswersPage />} />
+                <Route path="questions-review" element={<AdminQuestionsReviewPage />} />
+                <Route path="questions-review/:paperId" element={<AdminQuestionsReviewDetailPage />} />
               </Route>
 
               {/* Teacher Routes */}
@@ -86,6 +100,21 @@ function App() {
                 <Route path="answers" element={<TeacherAnswersPage />} />
                 <Route path="answers/:subjectId" element={<TeacherSubmissionsPage />} />
                 <Route path="grading/:subjectId/:studentId" element={<TeacherGradingPage />} />
+                <Route path="students" element={<TeacherStudentsPage />} />
+              </Route>
+
+              {/* Student Routes */}
+              <Route
+                path="/student"
+                element={
+                  <ProtectedRoute>
+                    <StudentLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<StudentDashboardPage />} />
+                <Route path="examinations" element={<StudentExaminationsPage />} />
+                <Route path="examinations/:id" element={<StudentExaminationDetailPage />} />
               </Route>
 
               <Route path="/" element={<RootRedirect />} />

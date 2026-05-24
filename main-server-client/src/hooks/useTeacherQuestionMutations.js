@@ -7,8 +7,11 @@ export function useCreateTeacherQuestionPaper() {
 
   return useMutation({
     mutationFn: teacherApi.createTeacherQuestionPaper,
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: teacherKeys.assignedQuestionsToWrite() });
+      if (variables?.subject_fk_id) {
+        qc.invalidateQueries({ queryKey: ["questionPaper", String(variables.subject_fk_id)] });
+      }
     },
   });
 }

@@ -48,6 +48,10 @@ const Question = sequelizeSqlite.define(
             type: DataTypes.INTEGER,
             allowNull: true,
         },
+        image_url: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
     },
     {
         tableName: "Questions",

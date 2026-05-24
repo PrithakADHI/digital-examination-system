@@ -2,7 +2,7 @@ import { useUsers } from "../../hooks/useAdminQueries.js";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-export default function SubjectInputBlock({ subject, index, onChange, onRemove, canRemove }) {
+export default function SubjectInputBlock({ subject, index, onChange, onRemove, canRemove, minDate }) {
   const { data: usersData } = useUsers({ role: "TEACHER" });
   const teachers = usersData?.data ?? [];
 
@@ -147,6 +147,7 @@ export default function SubjectInputBlock({ subject, index, onChange, onRemove, 
             placeholderText="Select start time"
             className="input input-bordered w-full bg-base-100 focus:bg-base-100 transition-all rounded-xl border-base-300 focus:border-primary focus:ring-4 focus:ring-primary/5 font-bold text-sm h-11"
             required
+            minDate={minDate}
           />
         </div>
       </div>

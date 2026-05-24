@@ -62,6 +62,7 @@ app.use(cors());
 app.use(passport.initialize());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
+app.use("/question-images", express.static("question-images"));
 
 const server = http.createServer(app);
 
@@ -149,14 +150,14 @@ const runApp = async () => {
   try {
     await sequelizeSqlite.authenticate();
     console.log("SQLite database connected successfully.");
-    // await sequelizeSqlite.sync({ alter: true });
+    await sequelizeSqlite.sync({ alter: true });
     console.log("SQLite database synced.");
 
     // Initialize cron jobs on startup
     await initializeCronJobs();
 
     // Initialize Docker Pool
-    // await DockerPool.initialize();
+    await DockerPool.initialize();
 
     // Start heartbeat monitor for clients (every 10s)
     setInterval(monitorHeartbeats, 10000);

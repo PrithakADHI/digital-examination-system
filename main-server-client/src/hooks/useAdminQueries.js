@@ -199,3 +199,30 @@ export function useAssignBulkStudents() {
     },
   });
 }
+
+export function useQuestionsReviewList() {
+  return useQuery({
+    queryKey: ["questionsReviewList"],
+    queryFn: adminApi.getQuestionsReviewList,
+  });
+}
+
+export function useQuestionsReviewDetail(paperId) {
+  return useQuery({
+    queryKey: ["questionsReviewDetail", paperId],
+    queryFn: () => adminApi.getQuestionsReviewDetail(paperId),
+    enabled: !!paperId,
+    retry: false,
+  });
+}
+
+export function useApproveOrDisapproveQuestionPaper() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ paperId, action }) => adminApi.approveOrDisapproveQuestionPaper(paperId, action),
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ["questionsReviewList"] });
+      qc.invalidateQueries({ queryKey: ["questionsReviewDetail", variables.paperId] });
+    },
+  });
+}

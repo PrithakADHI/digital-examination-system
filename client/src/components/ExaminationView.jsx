@@ -4,7 +4,7 @@ import { toast } from "react-hot-toast";
 import { ChevronLeft, ChevronRight, Send, User, Award, HelpCircle, RefreshCcw, Terminal } from "lucide-react";
 import CodeCompiler from "./CodeCompiler.jsx";
 
-const PROXY_URL = "http://localhost:8001";
+const PROXY_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8001";
 
 export default function ExaminationView({ onExit }) {
     const [questions, setQuestions] = useState([]);
@@ -172,6 +172,16 @@ export default function ExaminationView({ onExit }) {
                         <div className="text-xl md:text-2xl font-bold leading-relaxed mb-6 md:mb-10">
                             {currentQ.question_txt}
                         </div>
+
+                        {currentQ.image_url && (
+                            <div className="mb-6 md:mb-10 w-full max-w-2xl rounded-2xl overflow-hidden border border-base-content/10 bg-base-200/50 p-2">
+                                <img 
+                                    src={currentQ.image_url.startsWith("http") ? currentQ.image_url : `${PROXY_URL}${currentQ.image_url.startsWith("/") ? "" : "/"}${currentQ.image_url}`} 
+                                    alt="Question Diagram" 
+                                    className="max-h-[300px] w-full object-contain"
+                                />
+                            </div>
+                        )}
 
                         {currentQ.question_type === "MCQ" && (
                             <div className="grid grid-cols-1 gap-3 md:gap-4 max-w-xl">

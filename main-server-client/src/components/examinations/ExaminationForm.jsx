@@ -65,11 +65,74 @@ export default function ExaminationForm({
     }
   }, [initialData?.examination?.id]);
 
+  const getMinDateForSubject = (index, currentSubjects = form.subjects) => {
+    const minFirstSubject = new Date();
+    minFirstSubject.setDate(minFirstSubject.getDate() + 14); // Exactly 2 weeks (14 days) from now
+    minFirstSubject.setHours(0, 0, 0, 0); // Midnight to prevent race conditions
+
+    if (index === 0) {
+      return minFirstSubject;
+    }
+
+    const prevSubject = currentSubjects[index - 1];
+    if (prevSubject?.exam_startTime_ts) {
+      const prevDate = new Date(prevSubject.exam_startTime_ts);
+      return new Date(prevDate.getTime() + 24 * 60 * 60 * 1000); // at least 24 hours after
+    }
+
+    return minFirstSubject;
+  };
+
+  const getLatestSubjectDate = (subjectsList) => {
+    const dates = subjectsList
+      .map(s => s.exam_startTime_ts)
+      .filter(Boolean)
+      .map(d => new Date(d).getTime());
+    if (dates.length === 0) return null;
+    return new Date(Math.max(...dates));
+  };
+
+  const adjustFormDates = (subjectsList, currentResultDate) => {
+    // 1. Adjust subject dates sequentially
+    const adjustedSubjects = [...subjectsList];
+    for (let i = 0; i < adjustedSubjects.length; i++) {
+      const minDate = getMinDateForSubject(i, adjustedSubjects);
+      if (adjustedSubjects[i].exam_startTime_ts) {
+        const currentVal = new Date(adjustedSubjects[i].exam_startTime_ts);
+        if (currentVal < minDate) {
+          adjustedSubjects[i] = { ...adjustedSubjects[i], exam_startTime_ts: minDate };
+        }
+      }
+    }
+
+    // 2. Adjust result publication date if needed (default to 60 days, min 14 days)
+    const latestDate = getLatestSubjectDate(adjustedSubjects);
+    let nextResultDate = currentResultDate;
+    if (latestDate) {
+      const minResultDate = new Date(latestDate.getTime() + 14 * 24 * 60 * 60 * 1000);
+      const defaultResultDate = new Date(latestDate.getTime() + 60 * 24 * 60 * 60 * 1000);
+
+      if (!currentResultDate || currentResultDate < minResultDate) {
+        nextResultDate = defaultResultDate;
+      }
+    }
+
+    return {
+      subjects: adjustedSubjects,
+      result_time_ts: nextResultDate
+    };
+  };
+
   const handleSubjectChange = (index, nextSubject) => {
     setForm((prev) => {
-      const next = [...prev.subjects];
-      next[index] = nextSubject;
-      return { ...prev, subjects: next };
+      const nextSubjects = [...prev.subjects];
+      nextSubjects[index] = nextSubject;
+      const adjusted = adjustFormDates(nextSubjects, prev.result_time_ts);
+      return { 
+        ...prev, 
+        subjects: adjusted.subjects,
+        result_time_ts: adjusted.result_time_ts
+      };
     });
   };
 
@@ -78,10 +141,15 @@ export default function ExaminationForm({
   };
 
   const handleRemoveSubject = (index) => {
-    setForm((prev) => ({
-      ...prev,
-      subjects: prev.subjects.filter((_, i) => i !== index),
-    }));
+    setForm((prev) => {
+      const remainingSubjects = prev.subjects.filter((_, i) => i !== index);
+      const adjusted = adjustFormDates(remainingSubjects, prev.result_time_ts);
+      return {
+        ...prev,
+        subjects: adjusted.subjects,
+        result_time_ts: adjusted.result_time_ts
+      };
+    });
   };
 
   const handleCenterToggle = (centerId) => {
@@ -116,6 +184,15 @@ export default function ExaminationForm({
     onSubmit(payload);
   };
 
+  const latestDateForMinResult = getLatestSubjectDate(form.subjects);
+  const minResultDate = latestDateForMinResult 
+    ? new Date(latestDateForMinResult.getTime() + 14 * 24 * 60 * 60 * 1000) 
+    : (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 14); // Fallback to 2 weeks from now
+        return d;
+      })();
+
   return (
     <form onSubmit={handleSubmit} className="glass-card shadow-sm border border-base-300/30 overflow-hidden animate-fade-in mb-8">
       <div className="p-0">
@@ -148,17 +225,7 @@ export default function ExaminationForm({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-base-content/40 tracking-widest mb-2 block ml-1">Result Publication Date</label>
-                  <DatePicker
-                    selected={form.result_time_ts}
-                    onChange={(date) => setForm((p) => ({ ...p, result_time_ts: date }))}
-                    showTimeSelect
-                    dateFormat="MMMM d, yyyy h:mm aa"
-                    placeholderText="Select result time"
-                    className="input input-bordered w-full bg-base-100/50 focus:bg-base-100 transition-all rounded-xl border-base-300 focus:border-primary focus:ring-4 focus:ring-primary/10 font-medium"
-                  />
-                </div>
+                <div />
               </div>
             </div>
 
@@ -261,8 +328,38 @@ export default function ExaminationForm({
                   onChange={handleSubjectChange}
                   onRemove={handleRemoveSubject}
                   canRemove={form.subjects.length > 1}
+                  minDate={getMinDateForSubject(i)}
                 />
               ))}
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-base-300/30">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-bold tracking-tight">Result Settings</h3>
+                <p className="text-sm text-base-content/50 font-medium mt-1">Schedule when result publication becomes available</p>
+              </div>
+            </div>
+
+            <div className="max-w-xl">
+              <label className="text-[10px] font-black uppercase text-base-content/40 tracking-widest mb-2 block ml-1">Result Publication Date</label>
+              <DatePicker
+                selected={form.result_time_ts}
+                onChange={(date) => setForm((p) => ({ ...p, result_time_ts: date }))}
+                showTimeSelect
+                dateFormat="MMMM d, yyyy h:mm aa"
+                placeholderText="Select result time"
+                minDate={minResultDate}
+                className="input input-bordered w-full bg-base-100/50 focus:bg-base-100 transition-all rounded-xl border-base-300 focus:border-primary focus:ring-4 focus:ring-primary/10 font-bold"
+              />
+              {latestDateForMinResult ? (
+                <p className="mt-2 text-xs font-medium text-base-content/40 ml-1">
+                  Must be after {minResultDate.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs font-medium text-base-content/40 ml-1">Add at least one subject date to unlock result scheduling.</p>
+              )}
             </div>
           </div>
         </div>

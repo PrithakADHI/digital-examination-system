@@ -26,4 +26,18 @@ export const teacherKeys = {
   allSubmissions: () => [...teacherKeys.all, "all-submissions"],
   studentsToGrade: (subjectId) => [...teacherKeys.all, "students-to-grade", subjectId],
   studentSubmission: (subjectId, studentId) => [...teacherKeys.all, "submission", subjectId, studentId],
+  centerStudents: () => [...teacherKeys.all, "center-students"],
+  studentDetail: (studentId) => [...teacherKeys.all, "student-detail", studentId],
 };
+
+export const studentKeys = {
+  all: ["student"],
+  profile: () => [...studentKeys.all, "profile"],
+  dashboard: () => [...studentKeys.all, "dashboard"],
+  examSummary: () => [...studentKeys.dashboard(), "exam-summary"],
+  upcomingExaminations: () => [...studentKeys.dashboard(), "upcoming-examinations"],
+  averageResultsOverExaminations: () => [...studentKeys.dashboard(), "results-trend"],
+  examinations: () => [...studentKeys.all, "examinations"],
+  examinationDetail: (id) => [...studentKeys.all, "examination-detail", id],
+};
+

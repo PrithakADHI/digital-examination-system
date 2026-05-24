@@ -1,7 +1,9 @@
 import express from "express";
+import multer from "multer";
 import {
     getAllQuestionsToSet,
     createQuestion,
+    getQuestionPaperById,
     getAllAssignedPapersToCheck,
     getAllStudentsAnswersToCheck,
     getStudentAnswersBySubject,
@@ -14,16 +16,31 @@ import {
     getTeacherUpcomingExaminations,
     getTeacherTopStudents,
     getTeacherAverageResultsOverExaminations,
+    createStudent,
+    updateStudent,
+    deactivateStudent,
+    activateStudent,
+    deleteStudent,
+    uploadQuestionImage,
 } from "../controllers/teacherController.js";
 import { verifyLoggedIn, verifyTeacher } from "../middlewares/authMiddleware.js";
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
 const teacherRouter = express.Router();
 
 // Get all subjects assigned to a teacher to set questions for
 teacherRouter.get("/all-questions-to-set", verifyLoggedIn, verifyTeacher, getAllQuestionsToSet);
 
+// Upload a question image to Cloudinary
+teacherRouter.post("/upload-image", verifyLoggedIn, verifyTeacher, upload.single("image"), uploadQuestionImage);
+
 // Create paper and questions for an assigned subject
 teacherRouter.post("/create-question", verifyLoggedIn, verifyTeacher, createQuestion);
+
+// Get decrypted question paper for an assigned subject (before lockout)
+teacherRouter.get("/question-paper/:subjectId", verifyLoggedIn, verifyTeacher, getQuestionPaperById);
 
 
 // 1. Fetch list of subject papers that are assigned to currently logged in user
@@ -50,6 +67,13 @@ teacherRouter.get("/student/:student_id", verifyLoggedIn, verifyTeacher, getStud
 
 // 6. Get all students in a teacher's center
 teacherRouter.get("/center-students", verifyLoggedIn, verifyTeacher, getAllStudentInTeacherCenter);
+
+// Student CRUD operations
+teacherRouter.post("/student", verifyLoggedIn, verifyTeacher, createStudent);
+teacherRouter.put("/student/:student_id", verifyLoggedIn, verifyTeacher, updateStudent);
+teacherRouter.patch("/student/:student_id/deactivate", verifyLoggedIn, verifyTeacher, deactivateStudent);
+teacherRouter.patch("/student/:student_id/activate", verifyLoggedIn, verifyTeacher, activateStudent);
+teacherRouter.delete("/student/:student_id", verifyLoggedIn, verifyTeacher, deleteStudent);
 
 // Dashboard routes
 teacherRouter.get("/dashboard/exam-summary", verifyLoggedIn, verifyTeacher, getTeacherExamSummary);

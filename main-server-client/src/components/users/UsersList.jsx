@@ -12,6 +12,68 @@ function studentValue(user, key) {
   return user?.[key] || "—";
 }
 
+function renderRoleBadge(role) {
+  const normalizedRole = (role || "").toUpperCase().trim();
+  
+  if (!role) {
+    return <span className="opacity-30">—</span>;
+  }
+
+  let styles = "bg-neutral/10 text-neutral border-neutral/20";
+  let icon = (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  );
+  let label = role;
+
+  if (normalizedRole === "SUPER ADMIN") {
+    styles = "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20";
+    icon = (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 flex-shrink-0 animate-pulse">
+        <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z" />
+        <path d="M3 20h18" />
+      </svg>
+    );
+    label = "SUPER ADMIN";
+  } else if (normalizedRole === "ADMIN") {
+    styles = "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20";
+    icon = (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 flex-shrink-0">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="m9 11 2 2 4-4" />
+      </svg>
+    );
+    label = "ADMIN";
+  } else if (normalizedRole === "TEACHER") {
+    styles = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
+    icon = (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 flex-shrink-0">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      </svg>
+    );
+    label = "TEACHER";
+  } else if (normalizedRole === "STUDENT") {
+    styles = "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
+    icon = (
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 flex-shrink-0">
+        <path d="M22 10v6M2 10l10-5 10 5-10 5z" />
+        <path d="M6 12v5c0 2 2 3 6 3s6-1 6-3v-5" />
+      </svg>
+    );
+    label = "STUDENT";
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-xl text-xs font-black tracking-wide border transition-all duration-300 hover:scale-[1.03] ${styles}`}>
+      {icon}
+      <span>{label}</span>
+    </span>
+  );
+}
+
 export default function UsersList({
   users,
   pagination,
@@ -54,7 +116,7 @@ export default function UsersList({
                   value={searchInput}
                   onChange={(event) => onSearchInputChange?.(event.target.value)}
                   placeholder="Search users..."
-                  className="grow"
+                  className="grow bg-transparent border-none focus:outline-none font-medium text-sm"
                 />
               </label>
               <div className="flex items-center gap-3">
@@ -121,7 +183,7 @@ export default function UsersList({
                       <span className="font-bold text-base group-hover/tr:text-primary transition-colors">{fullName(row)}</span>
                     </td>
                     <td className="bg-base-100 group-hover/tr:bg-base-200/50 border-y border-base-300/30">
-                      <span className="badge badge-outline rounded-xl font-black tracking-wide">{row.role || "—"}</span>
+                      {renderRoleBadge(row.role)}
                     </td>
                     <td className="bg-base-100 group-hover/tr:bg-base-200/50 border-y border-base-300/30 text-sm font-semibold text-base-content/70">
                       {userCenterName(row, centersById)}
@@ -181,7 +243,7 @@ export default function UsersList({
                 <div className="space-y-1">
                   <div className="text-[10px] font-black opacity-20 tracking-tighter">#{row.id}</div>
                   <div className="font-bold text-lg leading-tight">{fullName(row)}</div>
-                  <div className="badge badge-outline rounded-xl font-black tracking-wide">{row.role || "—"}</div>
+                  {renderRoleBadge(row.role)}
                 </div>
                 <div className="flex gap-2">
                   <button
