@@ -317,6 +317,30 @@ export const getAllExaminations = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const offset = (page - 1) * limit;
+                const normalizedSearch = req.query.search?.trim();
+                const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
+
+                const searchClause = normalizedSearch
+                        ? `
+                            WHERE (
+                                CAST(e.id AS TEXT) ILIKE :searchPattern
+                                OR COALESCE(e."exam_name_txt", '') ILIKE :searchPattern
+                                OR CAST(
+                                    (SELECT MIN(esub."exam_startTime_ts") FROM public."ExaminationSubject" esub WHERE esub.exam_fk_id = e.id)
+                                    AS TEXT
+                                ) ILIKE :searchPattern
+                                OR CAST(e."result_time_ts" AS TEXT) ILIKE :searchPattern
+                                OR EXISTS (
+                                    SELECT 1
+                                    FROM public."ExaminationCenter" c
+                                    WHERE c.id::text IN (
+                                        SELECT jsonb_array_elements_text(e.center_fk_list)
+                                    )
+                                    AND COALESCE(c.center_name_txt, '') ILIKE :searchPattern
+                                )
+                            )
+                        `
+                        : "";
 
         const examinations = await sequelize.query(
             `
@@ -332,18 +356,28 @@ export const getAllExaminations = async (req, res) => {
                      '[]'
                    ) AS centers_detail
             FROM public.examinations e
+            ${searchClause}
             ORDER BY e."createdAt_ts" DESC 
             LIMIT :limit OFFSET :offset
             `,
             {
-                replacements: { limit, offset },
+                replacements: { limit, offset, ...(searchPattern ? { searchPattern } : {}) },
                 type: Sequelize.QueryTypes.SELECT,
             }
         );
 
+        const countQuery = `
+            SELECT COUNT(*) as count
+            FROM public.examinations e
+            ${searchClause}
+        `;
+
         const [totalResult] = await sequelize.query(
-            `SELECT COUNT(*) as count FROM public.examinations`,
-            { type: Sequelize.QueryTypes.SELECT }
+            countQuery,
+            {
+                replacements: searchPattern ? { searchPattern } : {},
+                type: Sequelize.QueryTypes.SELECT,
+            }
         );
 
         const total = parseInt(totalResult.count);

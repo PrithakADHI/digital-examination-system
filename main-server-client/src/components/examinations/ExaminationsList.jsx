@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useExaminations, useCenters, usePatchExaminationCenters } from "../../hooks/useAdminQueries.js";
+import { useCenters, usePatchExaminationCenters } from "../../hooks/useAdminQueries.js";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -140,11 +140,31 @@ function CenterAssignment({ examId, currentCenterIds }) {
   );
 }
 
-export default function ExaminationsList({ onSelectExam, onCreateNew, onDelete }) {
-  const [page, setPage] = useState(1);
-  const { data, isLoading, isError, error } = useExaminations({ page, limit: 10 });
-  const list = data?.data ?? [];
-  const pagination = data?.pagination ?? { total: 0, page: 1, limit: 10, totalPages: 0 };
+export default function ExaminationsList({
+  examinations,
+  pagination,
+  page,
+  setPage,
+  searchInput,
+  searchTerm,
+  onSearchInputChange,
+  onSearchSubmit,
+  onSearchClear,
+  onSelectExam,
+  onCreateNew,
+  onDelete,
+  isLoading,
+  isError,
+  error,
+}) {
+  const list = examinations ?? [];
+  const hasSearchTerm = Boolean(searchTerm?.trim());
+  const emptyMessage = hasSearchTerm ? `No examinations match "${searchTerm}".` : "No examinations scheduled yet.";
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    onSearchSubmit?.();
+  };
 
   if (isLoading) {
     return (
@@ -169,21 +189,56 @@ export default function ExaminationsList({ onSelectExam, onCreateNew, onDelete }
   return (
     <div className="glass-card shadow-sm border border-base-300/30 overflow-hidden animate-fade-in mb-8">
       <div className="p-0">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-8 gap-4 border-b border-base-300/30 bg-base-200/20">
-          <div>
-            <h2 className="text-xl font-bold tracking-tight">Examinations</h2>
-            <p className="text-sm text-base-content/50 font-medium mt-1">Manage and monitor all examinations in the system</p>
+        <div className="flex flex-col gap-4 p-8 border-b border-base-300/30 bg-base-200/20">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 w-full">
+            <div>
+              <h2 className="text-xl font-bold tracking-tight">Examinations</h2>
+              <p className="text-sm text-base-content/50 font-medium mt-1">Manage and monitor all examinations in the system</p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto lg:justify-end">
+              <form className="flex flex-1 sm:flex-initial items-center gap-3 w-full lg:w-auto" onSubmit={handleSubmit}>
+                <label className="input input-bordered flex items-center gap-2 rounded-xl bg-base-100 w-full sm:w-[320px] lg:w-[420px]">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={searchInput}
+                    onChange={(event) => onSearchInputChange?.(event.target.value)}
+                    placeholder="Search examinations..."
+                    className="grow"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-square rounded-xl shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-105"
+                  aria-label="Search examinations"
+                  title="Search"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" />
+                  </svg>
+                </button>
+                {hasSearchTerm ? (
+                  <button type="button" className="btn btn-ghost rounded-xl px-5" onClick={onSearchClear}>
+                    Clear
+                  </button>
+                ) : null}
+              </form>
+
+              <button 
+                type="button" 
+                className="btn btn-primary rounded-xl px-6 shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-105 w-full sm:w-auto lg:shrink-0" 
+                onClick={onCreateNew}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Create New Exam
+              </button>
+            </div>
           </div>
-          <button 
-            type="button" 
-            className="btn btn-primary rounded-xl px-6 shadow-lg shadow-primary/20 transition-all duration-300 hover:scale-105" 
-            onClick={onCreateNew}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Create New Exam
-          </button>
         </div>
         
         {/* Desktop Table View */}
@@ -207,7 +262,7 @@ export default function ExaminationsList({ onSelectExam, onCreateNew, onDelete }
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                       </svg>
-                      <span className="text-lg font-bold">No examinations scheduled yet.</span>
+                      <span className="text-lg font-bold">{emptyMessage}</span>
                       <button className="btn btn-primary btn-sm rounded-lg" onClick={onCreateNew}>Create Your First Exam</button>
                     </div>
                   </td>
@@ -285,7 +340,7 @@ export default function ExaminationsList({ onSelectExam, onCreateNew, onDelete }
         <div className="lg:hidden px-6 pb-8 space-y-4">
           {list.length === 0 ? (
             <div className="text-center py-12 opacity-40">
-              <p className="font-bold">No examinations scheduled yet.</p>
+              <p className="font-bold">{emptyMessage}</p>
             </div>
           ) : (
             list.map((row) => (

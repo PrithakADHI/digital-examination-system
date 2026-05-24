@@ -26,7 +26,13 @@ export function getExamAverageScores() {
 // Examinations
 export function getExaminations(params = {}) {
   return axiosInstance
-    .get(`${admin}/examination`, { params: { page: params.page ?? 1, limit: params.limit ?? 10 } })
+    .get(`${admin}/examination`, {
+      params: {
+        page: params.page ?? 1,
+        limit: params.limit ?? 10,
+        search: params.search,
+      },
+    })
     .then((res) => ({
       data: res.data?.data ?? [],
       pagination: res.data?.pagination ?? { total: 0, page: 1, limit: 10, totalPages: 0 },
