@@ -2,9 +2,17 @@ import { useUsers } from "../../hooks/useAdminQueries.js";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
+function getMinimumStartDate() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 14);
+  return date;
+}
+
 export default function SubjectInputBlock({ subject, index, onChange, onRemove, canRemove }) {
   const { data: usersData } = useUsers({ role: "TEACHER" });
   const teachers = usersData?.data ?? [];
+  const minDate = getMinimumStartDate();
 
   const handleChange = (field, value) => {
     onChange(index, { ...subject, [field]: value });
@@ -145,6 +153,7 @@ export default function SubjectInputBlock({ subject, index, onChange, onRemove, 
             showTimeSelect
             dateFormat="MMMM d, yyyy h:mm aa"
             placeholderText="Select start time"
+            minDate={minDate}
             className="input input-bordered w-full bg-base-100 focus:bg-base-100 transition-all rounded-xl border-base-300 focus:border-primary focus:ring-4 focus:ring-primary/5 font-bold text-sm h-11"
             required
           />

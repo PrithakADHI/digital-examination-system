@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useCenters } from "../../hooks/useAdminQueries.js";
@@ -11,6 +11,21 @@ const emptySubject = () => ({
   pass_marks: "",
   exam_startTime_ts: null,
 });
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function getStartDateFloor() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() + 14);
+  return date;
+}
+
+function toDayStart(date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
 
 export default function ExaminationForm({
   initialData,
@@ -55,6 +70,31 @@ export default function ExaminationForm({
 
   const [form, setFormState] = useState(getDefaultForm());
   const setForm = (updater) => setFormState((prev) => (typeof updater === "function" ? updater(prev) : updater));
+  const minSubjectStartDate = useMemo(() => getStartDateFloor(), []);
+
+  const latestSubjectStartDate = useMemo(() => {
+    const subjectDates = form.subjects
+      .map((subject) => subject.exam_startTime_ts)
+      .filter(Boolean)
+      .map((value) => new Date(value))
+      .filter((date) => !Number.isNaN(date.getTime()));
+
+    if (subjectDates.length === 0) return null;
+    return new Date(Math.max(...subjectDates.map((date) => date.getTime())));
+  }, [form.subjects]);
+
+  const resultDateMin = useMemo(() => {
+    if (!latestSubjectStartDate) return null;
+    const nextDay = new Date(toDayStart(latestSubjectStartDate).getTime() + DAY_MS);
+    return nextDay;
+  }, [latestSubjectStartDate]);
+
+  const resultDateError = useMemo(() => {
+    if (!form.result_time_ts || !latestSubjectStartDate) return null;
+    return toDayStart(form.result_time_ts).getTime() < toDayStart(latestSubjectStartDate).getTime() + DAY_MS
+      ? "Result publication date must be after the last subject exam date."
+      : null;
+  }, [form.result_time_ts, latestSubjectStartDate]);
 
   useEffect(() => {
     if (initialData) {
@@ -98,6 +138,7 @@ export default function ExaminationForm({
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (resultDateError) return;
     const payload = {
       exam_name_txt: form.exam_name_txt.trim(),
       result_time_ts: form.result_time_ts ? form.result_time_ts.toISOString() : null,
@@ -148,17 +189,7 @@ export default function ExaminationForm({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black uppercase text-base-content/40 tracking-widest mb-2 block ml-1">Result Publication Date</label>
-                  <DatePicker
-                    selected={form.result_time_ts}
-                    onChange={(date) => setForm((p) => ({ ...p, result_time_ts: date }))}
-                    showTimeSelect
-                    dateFormat="MMMM d, yyyy h:mm aa"
-                    placeholderText="Select result time"
-                    className="input input-bordered w-full bg-base-100/50 focus:bg-base-100 transition-all rounded-xl border-base-300 focus:border-primary focus:ring-4 focus:ring-primary/10 font-medium"
-                  />
-                </div>
+                <div />
               </div>
             </div>
 
@@ -265,6 +296,37 @@ export default function ExaminationForm({
               ))}
             </div>
           </div>
+
+          <div className="pt-4 border-t border-base-300/30">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-bold tracking-tight">Result Settings</h3>
+                <p className="text-sm text-base-content/50 font-medium">Schedule when result publication becomes available</p>
+              </div>
+            </div>
+
+            <div className="max-w-xl">
+              <label className="text-[10px] font-black uppercase text-base-content/40 tracking-widest mb-2 block ml-1">Result Publication Date</label>
+              <DatePicker
+                selected={form.result_time_ts}
+                onChange={(date) => setForm((p) => ({ ...p, result_time_ts: date }))}
+                showTimeSelect
+                dateFormat="MMMM d, yyyy h:mm aa"
+                placeholderText="Select result time"
+                minDate={resultDateMin ?? undefined}
+                className={`input input-bordered w-full bg-base-100/50 focus:bg-base-100 transition-all rounded-xl border-base-300 focus:border-primary focus:ring-4 focus:ring-primary/10 font-medium ${resultDateError ? "border-error focus:border-error focus:ring-error/10" : ""}`}
+              />
+              {resultDateError ? (
+                <p className="mt-2 text-xs font-bold text-error">{resultDateError}</p>
+              ) : latestSubjectStartDate ? (
+                <p className="mt-2 text-xs font-medium text-base-content/40">
+                  Must be after {latestSubjectStartDate.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}.
+                </p>
+              ) : (
+                <p className="mt-2 text-xs font-medium text-base-content/40">Add at least one subject date to unlock result scheduling.</p>
+              )}
+            </div>
+          </div>
         </div>
 
         {submitError && (
@@ -289,7 +351,7 @@ export default function ExaminationForm({
           <button 
             type="submit" 
             className="btn btn-primary px-10 rounded-xl font-black uppercase tracking-widest shadow-xl shadow-primary/30 transition-all hover:scale-105 active:scale-95" 
-            disabled={isSubmitting}
+            disabled={isSubmitting || Boolean(resultDateError)}
           >
             {isSubmitting ? (
               <span className="loading loading-spinner loading-sm" />
