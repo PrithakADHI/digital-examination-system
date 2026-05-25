@@ -7,6 +7,8 @@ export default function AdminQuestionsReviewDetailPage() {
   const { paperId } = useParams();
   const navigate = useNavigate();
   const [errorMsg, setErrorMsg] = useState("");
+  const [overallNote, setOverallNote] = useState("");
+  const [questionsNotes, setQuestionsNotes] = useState({});
 
   const { data: reviewData, isLoading, isError, error } = useQuestionsReviewDetail(paperId);
   const actionMutation = useApproveOrDisapproveQuestionPaper();
@@ -16,8 +18,19 @@ export default function AdminQuestionsReviewDetailPage() {
 
   const handleAction = (action) => {
     setErrorMsg("");
+    
+    // Compile questions notes into an array of { id, feedback_note }
+    const questions_feedback = Object.entries(questionsNotes)
+      .map(([id, note]) => ({ id: Number(id), feedback_note: note.trim() }))
+      .filter(item => item.feedback_note !== "");
+
     actionMutation.mutate(
-      { paperId, action },
+      { 
+        paperId, 
+        action,
+        feedback_note: overallNote.trim() || null,
+        questions_feedback: questions_feedback.length > 0 ? questions_feedback : null
+      },
       {
         onSuccess: () => {
           toast.success(`Question paper successfully ${action === "APPROVE" ? "Approved" : "Returned for Revision"}.`);
@@ -103,7 +116,6 @@ export default function AdminQuestionsReviewDetailPage() {
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b border-base-300/30">
                     <span className="badge badge-neutral text-xs font-black px-3 py-2 rounded-lg">Question {index + 1}</span>
-                    <span className="text-xs font-bold text-base-content/50 uppercase tracking-widest">Decrypted Raw Data</span>
                   </div>
 
                   <div className="pt-4 space-y-3">
@@ -130,6 +142,22 @@ export default function AdminQuestionsReviewDetailPage() {
                         </div>
                       </div>
                     )}
+
+                    <div className="mt-4 pt-4 border-t border-base-300/30 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        <span className="text-[10px] font-black uppercase text-amber-600 tracking-wider">Feedback note for Question {index + 1}</span>
+                      </div>
+                      <textarea
+                        value={questionsNotes[q.id] || ""}
+                        onChange={(e) => setQuestionsNotes(p => ({ ...p, [q.id]: e.target.value }))}
+                        placeholder="Attach a correction note (e.g. Please clarify options, fix typos, rewrite statement, etc.)"
+                        rows={2}
+                        className="textarea textarea-bordered w-full rounded-xl bg-base-100 border-base-300 focus:border-amber-500/50 focus:ring-4 focus:ring-amber-500/5 transition-all font-medium text-xs resize-none"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -184,6 +212,26 @@ export default function AdminQuestionsReviewDetailPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="bg-primary/5 border border-primary/10 rounded-3xl p-6 space-y-4 my-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-xl text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-base font-bold tracking-tight">Overall Audit Revision Notes</h3>
+              <p className="text-xs text-base-content/50 font-semibold mt-0.5">Attach a high-level review note detailing required adjustments for the entire question paper.</p>
+            </div>
+          </div>
+          <textarea
+            value={overallNote}
+            onChange={(e) => setOverallNote(e.target.value)}
+            placeholder="Write overall revision feedback here (highly recommended when returning for revision)..."
+            className="textarea textarea-bordered w-full rounded-2xl bg-base-100/50 focus:bg-base-100 border-base-300 focus:border-primary/50 transition-all font-medium text-sm p-4 h-24"
+          />
         </div>
 
         {errorMsg && (

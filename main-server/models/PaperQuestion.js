@@ -48,6 +48,10 @@ const PaperQuestion = sequelize.define(
     image_url: {
       type: DataTypes.TEXT("long"),
       allowNull: true
+    },
+    feedback_note: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   },
   {

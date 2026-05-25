@@ -219,7 +219,7 @@ export function useQuestionsReviewDetail(paperId) {
 export function useApproveOrDisapproveQuestionPaper() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ paperId, action }) => adminApi.approveOrDisapproveQuestionPaper(paperId, action),
+    mutationFn: ({ paperId, ...payload }) => adminApi.approveOrDisapproveQuestionPaper(paperId, payload),
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ["questionsReviewList"] });
       qc.invalidateQueries({ queryKey: ["questionsReviewDetail", variables.paperId] });

@@ -366,6 +366,7 @@ export const getQuestionPaperById = async (req, res) => {
                 es."exam_startTime_ts",
                 sp.id AS "paper_id",
                 sp.status AS "paper_status",
+                sp.feedback_note AS "paper_feedback_note",
                 sp.exam_batch_year
             FROM public."ExaminationSubject" es
             LEFT JOIN public."SubjectPaper" sp ON sp.subject_fk_id = es.id
@@ -445,6 +446,7 @@ export const getQuestionPaperById = async (req, res) => {
                 question_txt: decrypt(q.question_txt, paperKey),
                 full_marks: q.full_marks,
                 image_url: q.image_url ? decrypt(q.image_url, paperKey) : null,
+                feedback_note: q.feedback_note || null,
             };
 
             if (q.question_type === "MCQ") {
