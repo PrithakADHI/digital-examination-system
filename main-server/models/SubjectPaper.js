@@ -26,6 +26,10 @@ const SubjectPaper = sequelize.define(
       allowNull: false,
       defaultValue: "DRAFT",
     },
+    feedback_note: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
   },
   {
     tableName: "SubjectPaper",

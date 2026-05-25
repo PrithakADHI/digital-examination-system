@@ -1523,6 +1523,7 @@ export const getQuestionsReviewDetail = async (req, res) => {
                 question_txt: decrypt(q.question_txt, paperKey),
                 full_marks: q.full_marks,
                 image_url: q.image_url ? decrypt(q.image_url, paperKey) : null,
+                feedback_note: q.feedback_note || null,
             };
 
             if (q.question_type === "MCQ") {
@@ -1554,7 +1555,7 @@ export const getQuestionsReviewDetail = async (req, res) => {
 export const approveOrDisapproveQuestionPaper = async (req, res) => {
     try {
         const { paperId } = req.params;
-        const { action } = req.body; // 'APPROVE' or 'DISAPPROVE'
+        const { action, feedback_note, questions_feedback } = req.body; // 'APPROVE' or 'DISAPPROVE'
 
         if (!action || !["APPROVE", "DISAPPROVE"].includes(action)) {
             return res.status(400).json({ error: "Action must be 'APPROVE' or 'DISAPPROVE'." });
@@ -1584,13 +1585,30 @@ export const approveOrDisapproveQuestionPaper = async (req, res) => {
             });
         }
 
-        await paper.update({ status: nextStatus });
+        // Update paper status and overall paper feedback note
+        await paper.update({ 
+            status: nextStatus,
+            feedback_note: feedback_note || null,
+        });
+
+        // Update specific question-level feedback notes
+        if (questions_feedback && Array.isArray(questions_feedback)) {
+            for (const qf of questions_feedback) {
+                if (qf.id) {
+                    await PaperQuestion.update(
+                        { feedback_note: qf.feedback_note || null },
+                        { where: { id: qf.id, paper_fk_id: paper.id } }
+                    );
+                }
+            }
+        }
 
         res.status(200).json({
             message: `Subject paper successfully ${action.toLowerCase()}d.`,
             data: {
                 paperId: paper.id,
                 status: paper.status,
+                feedback_note: paper.feedback_note,
             }
         });
     } catch (err) {
