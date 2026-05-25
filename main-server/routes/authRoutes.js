@@ -4,7 +4,8 @@ import {
   registerUser,
   refreshAccessToken,
   profile,
-  submitInstitution
+  submitInstitution,
+  completeTemporaryPassword,
 } from "../controllers/authController.js";
 import multer from "multer";
 import { validateRequest } from "../middlewares/validate.js";
@@ -31,6 +32,12 @@ authRouter.post(
   userValidationRules.refreshAccessToken,
   validateRequest,
   refreshAccessToken
+);
+authRouter.post(
+  "/complete-temporary-password",
+  userValidationRules.completeTemporaryPassword,
+  validateRequest,
+  completeTemporaryPassword
 );
 
 authRouter.get("/profile/:id", userValidationRules.profile, profile);

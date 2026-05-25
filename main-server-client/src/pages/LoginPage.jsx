@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { login } from "../api/auth.js";
-import { setStoredToken } from "../api/axiosInstance.js";
+import { completeTemporaryPassword, login } from "../api/auth.js";
+import { setStoredRefreshToken, setStoredToken } from "../api/axiosInstance.js";
 import { useTheme } from "../context/ThemeContext.jsx";
 
 export default function LoginPage() {
   const { theme, toggleTheme } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -17,8 +19,14 @@ export default function LoginPage() {
   const mutation = useMutation({
     mutationFn: (credentials) => login(credentials),
     onSuccess: (data) => {
-      if (data?.accessToken) {
+      if (data?.requiresPasswordChange) {
+        setRequiresPasswordChange(true);
+        return;
+      }
+
+      if (data?.accessToken && data?.refreshToken) {
         setStoredToken(data.accessToken);
+        setStoredRefreshToken(data.refreshToken);
         if (data.user) {
           localStorage.setItem("user", JSON.stringify(data.user));
           
@@ -40,9 +48,43 @@ export default function LoginPage() {
     },
   });
 
+  const completePasswordMutation = useMutation({
+    mutationFn: (payload) => completeTemporaryPassword(payload),
+    onSuccess: (data) => {
+      if (data?.accessToken && data?.refreshToken) {
+        setStoredToken(data.accessToken);
+        setStoredRefreshToken(data.refreshToken);
+        if (data.user) {
+          localStorage.setItem("user", JSON.stringify(data.user));
+
+          if (!location.state?.from) {
+            if (data.user.role === "TEACHER") {
+              navigate("/teacher", { replace: true });
+              return;
+            }
+            if (data.user.role === "STUDENT") {
+              navigate("/student", { replace: true });
+              return;
+            }
+          }
+        }
+        navigate(from, { replace: true });
+      }
+    },
+  });
+
   const handleSubmit = (e) => {
     e.preventDefault();
     mutation.mutate({ email, password });
+  };
+
+  const handleCompletePassword = (e) => {
+    e.preventDefault();
+    completePasswordMutation.mutate({
+      email,
+      currentPassword: password,
+      newPassword,
+    });
   };
 
   return (
@@ -84,7 +126,7 @@ export default function LoginPage() {
         </div>
 
         {/* Minimalist Form */}
-        <form onSubmit={handleSubmit} className="w-full space-y-4">
+        <form onSubmit={requiresPasswordChange ? handleCompletePassword : handleSubmit} className="w-full space-y-4">
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider ml-1">Email</label>
             <input
@@ -98,7 +140,9 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider ml-1">Password</label>
+            <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider ml-1">
+              {requiresPasswordChange ? "Temporary Password" : "Password"}
+            </label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
@@ -127,6 +171,21 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {requiresPasswordChange ? (
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase text-base-content/40 tracking-wider ml-1">New Password</label>
+              <input
+                type="password"
+                placeholder="Enter new password"
+                className="w-full px-4 h-12 bg-base-200 border border-base-content/10 rounded-xl focus:border-primary focus:ring-0 transition-all text-sm outline-none text-base-content"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                minLength={6}
+                required
+              />
+            </div>
+          ) : null}
+
           {mutation.isError && (
             <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 animate-fade-in">
               <div className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
@@ -136,15 +195,30 @@ export default function LoginPage() {
             </div>
           )}
 
+          {completePasswordMutation.isError && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 animate-fade-in">
+              <div className="w-1 h-1 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-[11px] font-bold text-red-600">
+                {completePasswordMutation.error?.response?.data?.error ?? completePasswordMutation.error?.message ?? "Could not update password."}
+              </span>
+            </div>
+          )}
+
+          {requiresPasswordChange ? (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <span className="text-[11px] font-bold text-amber-700">First login detected. Set a new password to continue.</span>
+            </div>
+          ) : null}
+
           <button 
             type="submit" 
             className="w-full h-12 bg-primary text-primary-content rounded-xl text-sm font-bold hover:opacity-90 active:scale-[0.98] transition-all mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg shadow-primary/20"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || completePasswordMutation.isPending}
           >
-            {mutation.isPending ? (
+            {mutation.isPending || completePasswordMutation.isPending ? (
               <span className="loading loading-spinner loading-sm text-primary-content"></span>
             ) : (
-              "Sign in"
+              requiresPasswordChange ? "Save New Password" : "Sign in"
             )}
           </button>
         </form>
