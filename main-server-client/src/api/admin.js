@@ -125,6 +125,6 @@ export function getQuestionsReviewDetail(paperId) {
   return axiosInstance.get(`${admin}/questions-review/${paperId}`).then((res) => res.data?.data ?? res.data);
 }
 
-export function approveOrDisapproveQuestionPaper(paperId, action) {
-  return axiosInstance.post(`${admin}/questions-review/${paperId}/action`, { action }).then((res) => res.data);
+export function approveOrDisapproveQuestionPaper(paperId, payload) {
+  return axiosInstance.post(`${admin}/questions-review/${paperId}/action`, payload).then((res) => res.data);
 }

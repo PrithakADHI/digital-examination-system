@@ -93,6 +93,7 @@ export default function TeacherQuestionCreatePage() {
     if (dbPaperData?.subject?.paper_id && dbPaperData.questions?.length > 0) {
       const serverQuestions = dbPaperData.questions.map((q) => ({
         localId: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${q.id}`,
+        id: q.id,
         question_txt: q.question_txt || "",
         full_marks: q.full_marks || "",
         question_type: q.question_type || "SHORT",
@@ -102,6 +103,7 @@ export default function TeacherQuestionCreatePage() {
         option4: q.option4 || "",
         correct_option: q.correct_option ? String(q.correct_option) : "",
         image_url: q.image_url || "",
+        feedback_note: q.feedback_note || "",
       }));
 
       setDraft({
@@ -278,6 +280,22 @@ export default function TeacherQuestionCreatePage() {
         )}
       </div>
 
+      {dbPaperData?.subject?.paper_feedback_note && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 flex gap-4 animate-fade-in shadow-sm">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0 border border-amber-500/20">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-sm font-black uppercase tracking-wider text-amber-700">Revision Required: Admin Audit Feedback</h3>
+            <p className="text-sm text-amber-900/80 font-medium whitespace-pre-wrap leading-relaxed">
+              {dbPaperData.subject.paper_feedback_note}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="glass-card rounded-3xl p-6 border border-base-300/40 space-y-6">
         {/* Top bar settings */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end bg-base-200/20 p-6 rounded-2xl border border-base-300/30">
@@ -318,6 +336,18 @@ export default function TeacherQuestionCreatePage() {
                     )}
                   </div>
 
+                  {q.feedback_note && (
+                    <div className="p-4 bg-error/5 border border-error/10 rounded-2xl flex gap-3 text-xs font-semibold text-error/90 animate-pulse">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-error shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div>
+                        <span className="font-extrabold uppercase text-[10px] tracking-wider block text-error">Correction Note:</span>
+                        <p className="mt-0.5 leading-relaxed">{q.feedback_note}</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-wider text-base-content/40">Question Text</label>
                     <textarea
@@ -349,7 +379,7 @@ export default function TeacherQuestionCreatePage() {
                     ) : uploadingMap[q.localId] ? (
                       <div className="flex items-center gap-3 py-3 px-4 border border-dashed border-base-300 rounded-xl bg-base-200/20">
                         <span className="loading loading-spinner loading-sm text-primary" />
-                        <span className="text-xs font-bold text-base-content/60">Uploading diagram to Cloudinary...</span>
+                        <span className="text-xs font-bold text-base-content/60">Uploading diagram...</span>
                       </div>
                     ) : !isReadOnly ? (
                       <div className="flex items-center">
