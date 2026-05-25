@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useCreateUser, useUpdateUser } from "../../hooks/useAdminQueries.js";
+import { toast } from "react-hot-toast";
 
 const ROLE_OPTIONS = ["SUPERADMIN", "ADMIN", "TEACHER", "STUDENT"];
 const BATCH_YEAR_START = 2020;
@@ -24,6 +25,7 @@ function getInitialFormData(userToEdit) {
     firstname_txt: capitalizeName(userToEdit?.firstname_txt || ""),
     lastname_txt: capitalizeName(userToEdit?.lastname_txt || ""),
     username: userToEdit?.username || "",
+    email_txt: userToEdit?.email_txt || "",
     role: userToEdit?.role || "STUDENT",
     center_fk_id: userToEdit?.center_fk_id != null ? String(userToEdit.center_fk_id) : "",
     stud_exam_symbol_no: userToEdit?.stud_exam_symbol_no || "",
@@ -81,6 +83,7 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
 
     if (!isEditMode) {
       payload.username = formData.username.trim();
+      payload.email_txt = formData.email_txt.trim().toLowerCase();
     }
 
     if (isStudent) {
@@ -90,7 +93,13 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
     }
 
     activeMutation.mutate(payload, {
-      onSuccess: () => onClose(),
+      onSuccess: (response) => {
+        if (!isEditMode) {
+          const mailTarget = response?.email || payload.email_txt;
+          toast.success(`Mail sent to this email: ${mailTarget}`);
+        }
+        onClose();
+      },
     });
   };
 
@@ -146,18 +155,35 @@ export default function UserFormModal({ isOpen, onClose, userToEdit, centers }) 
           </div>
 
           {!isEditMode ? (
-            <div className="form-control w-full md:max-w-[calc(50%-0.5rem)]">
-              <label className="label">
-                <span className="label-text font-bold uppercase text-[10px] tracking-widest opacity-40">Username</span>
-              </label>
-              <input
-                type="text"
-                name="username"
-                value={formData.username}
-                onChange={handleChange}
-                required
-                className="input input-bordered w-full rounded-xl bg-base-200/30 font-medium border-base-300/50"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="form-control w-full">
+                <label className="label">
+                  <span className="label-text font-bold uppercase text-[10px] tracking-widest opacity-40">Username</span>
+                </label>
+                <input
+                  type="text"
+                  name="username"
+                  value={formData.username}
+                  onChange={handleChange}
+                  required
+                  className="input input-bordered w-full rounded-xl bg-base-200/30 font-medium border-base-300/50"
+                />
+              </div>
+
+              <div className="form-control w-full">
+                <label className="label">
+                  <span className="label-text font-bold uppercase text-[10px] tracking-widest opacity-40">Email</span>
+                </label>
+                <input
+                  type="email"
+                  name="email_txt"
+                  value={formData.email_txt}
+                  onChange={handleChange}
+                  required
+                  autoComplete="off"
+                  className="input input-bordered w-full rounded-xl bg-base-200/30 font-medium border-base-300/50"
+                />
+              </div>
             </div>
           ) : null}
 

@@ -23,6 +23,13 @@ export const userValidationRules = {
   refreshAccessToken: [
     body("token").notEmpty().withMessage("Refresh Token is required."),
   ],
+  completeTemporaryPassword: [
+    body("email").isEmail().withMessage("A valid email is required."),
+    body("currentPassword").notEmpty().withMessage("Current password is required."),
+    body("newPassword")
+      .isLength({ min: 6 })
+      .withMessage("New password must be at least 6 characters long."),
+  ],
   profile: [
     param("id").notEmpty().withMessage("User ID is required."),
   ]

@@ -66,7 +66,11 @@ const User = sequelize.define(
       type: DataTypes.BOOLEAN,
       defaultValue: true,
       allowNull: true
-    }
+    },
+    random_pass_assigned: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
   },
   {
     tableName: "User",

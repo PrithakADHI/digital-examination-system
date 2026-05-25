@@ -147,7 +147,7 @@ export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const user = await User.findOne({ where: { email_txt: email } });
+    const user = await User.findOne({ where: { email_txt: email?.trim().toLowerCase() } });
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password." });
     }
@@ -155,6 +155,19 @@ export const loginUser = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    if (user.random_pass_assigned) {
+      return res.status(200).json({
+        message: "Password change required before continuing.",
+        requiresPasswordChange: true,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email_txt,
+          role: user.role,
+        },
+      });
     }
 
     // Generate JWT
@@ -180,6 +193,55 @@ export const loginUser = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: "Error logging in: " + err.message });
+  }
+};
+
+export const completeTemporaryPassword = async (req, res) => {
+  const { email, currentPassword, newPassword } = req.body;
+
+  try {
+    const user = await User.findOne({ where: { email_txt: email?.trim().toLowerCase() } });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    if (!user.random_pass_assigned) {
+      return res.status(400).json({ error: "Temporary password reset not required for this user." });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Current password is incorrect." });
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await user.update({
+      password: hashedNewPassword,
+      random_pass_assigned: false,
+    });
+
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    await Token.create({ refreshToken });
+
+    return res.status(200).json({
+      message: "Password updated successfully.",
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email_txt,
+        firstName: user.firstname_txt,
+        lastName: user.lastname_txt,
+        role: user.role,
+        profilePicture: user.profilePicture,
+        profilePicturePublicId: user.profilePicturePublicId,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Error updating password: " + err.message });
   }
 };
 
@@ -248,6 +310,9 @@ export const refreshAccessToken = async (req, res) => {
     });
   } catch (err) {
     console.error("Error Occurred: ", err.message);
+    if (err?.name === "TokenExpiredError" || err?.name === "JsonWebTokenError") {
+      return res.status(403).json({ error: "Refresh Token not valid." });
+    }
     return res
       .status(500)
       .json({ error: "Error refreshing token: " + err.message });

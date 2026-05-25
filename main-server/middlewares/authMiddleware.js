@@ -27,7 +27,10 @@ const verifyLoggedIn = async (req, res, next) => {
       req.user = user;
       return next();
     } catch (error) {
-      console.error("Token verification failed:", error);
+      if (error?.name === "TokenExpiredError") {
+        return res.status(401).json({ message: "Access token expired", code: "TOKEN_EXPIRED" });
+      }
+      console.error("Token verification failed:", error.message);
       return res.status(401).json({ message: "Invalid token" });
     }
   }

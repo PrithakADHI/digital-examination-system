@@ -11,6 +11,7 @@ import sequelize from "../database.js";
 import { Sequelize } from "sequelize";
 import User from "../models/User.js";
 import SubjectStudentCheckerAssignment from "../models/SubjectStudentCheckerAssignment.js";
+import { sendTemporaryPasswordEmail } from "../utils/mailer.js";
 
 // --- Helper Functions (from SubjectPaper) ---
 
@@ -78,6 +79,18 @@ const normalizeName = (value) => {
     return cleanValue.charAt(0).toUpperCase() + cleanValue.slice(1).toLowerCase();
 };
 
+const generateTemporaryPassword = () => {
+    const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const length = crypto.randomInt(8, 11);
+    let password = "";
+
+    for (let index = 0; index < length; index++) {
+        password += characters[crypto.randomInt(0, characters.length)];
+    }
+
+    return password;
+};
+
 const createUserSchema = Joi.object({
     firstname_txt: Joi.string().trim().pattern(/^[A-Za-z]+$/).required().messages({
         "string.pattern.base": "First name must contain letters only.",
@@ -87,7 +100,7 @@ const createUserSchema = Joi.object({
     }),
     role: Joi.string().valid("SUPERADMIN", "ADMIN", "TEACHER", "STUDENT").required(),
     username: Joi.string().required(),
-    email_txt: Joi.string().email().allow(null, ""),
+    email_txt: Joi.string().email().required(),
     phone_num_txt: Joi.string().allow(null, ""),
     center_fk_id: Joi.number().allow(null),
     stud_batch_year: Joi.when("role", {
@@ -1174,13 +1187,51 @@ export const createUser = async (req, res) => {
     const { error, value } = createUserSchema.validate(req.body);
     if (error) return res.status(400).json({ error: error.details[0].message });
 
+    const normalizedEmail = value.email_txt.trim().toLowerCase();
+
     try {
+        const duplicate = await User.findOne({
+            where: {
+                [Sequelize.Op.or]: [{ username: value.username }, { email_txt: normalizedEmail }],
+            },
+        });
+
+        if (duplicate) {
+            return res.status(400).json({ error: "Username or email already exists." });
+        }
+
+        const temporaryPassword = generateTemporaryPassword();
+        const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+
         const user = await User.create({
             ...value,
             firstname_txt: normalizeName(value.firstname_txt),
             lastname_txt: normalizeName(value.lastname_txt),
+            email_txt: normalizedEmail,
+            password: hashedPassword,
+            random_pass_assigned: true,
         });
-        res.status(201).json({ message: "User created", data: user });
+
+        try {
+            await sendTemporaryPasswordEmail({
+                to: user.email_txt,
+                fullName: `${user.firstname_txt} ${user.lastname_txt}`.trim(),
+                username: user.username,
+                temporaryPassword,
+            });
+        } catch (emailErr) {
+            await user.destroy();
+            return res.status(500).json({
+                error: "User could not be created because email delivery failed.",
+                details: emailErr.message,
+            });
+        }
+
+        res.status(201).json({
+            message: `User created. Mail sent to this email: ${user.email_txt}`,
+            data: user,
+            email: user.email_txt,
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -1218,23 +1269,53 @@ export const bulkCreateUsers = async (req, res) => {
 
         try {
             // 2. Check for Duplicate Username manually (since bulkCreate bypasses some hooks)
-            const existing = await User.findOne({ where: { username: value.username } });
+            const normalizedEmail = value.email_txt.trim().toLowerCase();
+            const existing = await User.findOne({
+                where: {
+                    [Sequelize.Op.or]: [{ username: value.username }, { email_txt: normalizedEmail }],
+                },
+            });
             if (existing) {
                 results.errorCount++;
                 results.errors.push({
                     index: i,
                     username: value.username,
-                    reason: "Username already exists in database"
+                    reason: "Username or email already exists in database"
                 });
                 continue;
             }
+
+            const temporaryPassword = generateTemporaryPassword();
+            const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
 
             // 3. Create the valid user
             const newUser = await User.create({
                 ...value,
                 firstname_txt: normalizeName(value.firstname_txt),
                 lastname_txt: normalizeName(value.lastname_txt),
+                email_txt: normalizedEmail,
+                password: hashedPassword,
+                random_pass_assigned: true,
             });
+
+            try {
+                await sendTemporaryPasswordEmail({
+                    to: newUser.email_txt,
+                    fullName: `${newUser.firstname_txt} ${newUser.lastname_txt}`.trim(),
+                    username: newUser.username,
+                    temporaryPassword,
+                });
+            } catch (emailErr) {
+                await newUser.destroy();
+                results.errorCount++;
+                results.errors.push({
+                    index: i,
+                    username: value.username,
+                    reason: "Email error: " + emailErr.message,
+                });
+                continue;
+            }
+
             results.successCount++;
             results.createdUsers.push(newUser);
 
