@@ -80,7 +80,15 @@ const normalizeName = (value) => {
 };
 
 const generateTemporaryPassword = () => {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const length = crypto.randomInt(8, 11);
+    let password = "";
+
+    for (let index = 0; index < length; index++) {
+        password += characters[crypto.randomInt(0, characters.length)];
+    }
+
+    return password;
 };
 
 const createUserSchema = Joi.object({
