@@ -2,7 +2,7 @@ import Joi from "joi";
 import crypto from "crypto";
 import Examination from "../models/Examination.js";
 import ExaminationSubject from "../models/ExaminationSubject.js";
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import ExaminationCenter from "../models/ExaminationCenter.js";
 import SubjectPaper from "../models/SubjectPaper.js";
 import PaperQuestion from "../models/PaperQuestion.js";
