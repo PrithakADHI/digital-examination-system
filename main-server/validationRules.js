@@ -30,6 +30,29 @@ export const userValidationRules = {
       .isLength({ min: 6 })
       .withMessage("New password must be at least 6 characters long."),
   ],
+  requestPasswordResetOtp: [
+    body("email").isEmail().withMessage("A valid email is required."),
+  ],
+  verifyPasswordResetOtp: [
+    body("email").isEmail().withMessage("A valid email is required."),
+    body("otp")
+      .isLength({ min: 4, max: 4 })
+      .isNumeric()
+      .withMessage("OTP must be a 4 digit number."),
+  ],
+  resetPasswordWithOtp: [
+    body("email").isEmail().withMessage("A valid email is required."),
+    body("otp")
+      .isLength({ min: 4, max: 4 })
+      .isNumeric()
+      .withMessage("OTP must be a 4 digit number."),
+    body("newPassword")
+      .isLength({ min: 6 })
+      .withMessage("Password must be at least 6 characters long."),
+    body("confirmNewPassword")
+      .custom((value, { req }) => value === req.body.newPassword)
+      .withMessage("Passwords do not match."),
+  ],
   profile: [
     param("id").notEmpty().withMessage("User ID is required."),
   ]
