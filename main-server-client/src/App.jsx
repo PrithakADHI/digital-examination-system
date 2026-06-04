@@ -6,6 +6,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute.jsx";
 import { Toaster } from "react-hot-toast";
 import AdminLayout from "./components/layout/AdminLayout.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import ExaminationsPage from "./pages/ExaminationsPage.jsx";
 import ExaminationFormPage from "./pages/ExaminationFormPage.jsx";
@@ -66,6 +67,7 @@ function App() {
             <Toaster position="top-right" reverseOrder={false} />
             <Routes>
               <Route path="/login" element={<LoginPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route
                 path="/admin"
                 element={
