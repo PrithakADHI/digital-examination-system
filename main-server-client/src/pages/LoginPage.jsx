@@ -221,6 +221,16 @@ export default function LoginPage() {
               requiresPasswordChange ? "Save New Password" : "Sign in"
             )}
           </button>
+
+          {!requiresPasswordChange ? (
+            <button
+              type="button"
+              onClick={() => navigate("/forgot-password", { state: { email } })}
+              className="w-full text-center text-xs font-bold text-primary hover:opacity-80 transition-opacity"
+            >
+              Forgot password?
+            </button>
+          ) : null}
         </form>
 
         <p className="mt-12 text-[10px] font-bold text-base-content/20 uppercase tracking-tighter">

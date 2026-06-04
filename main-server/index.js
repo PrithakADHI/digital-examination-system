@@ -18,6 +18,7 @@ import StudentQuestionAnswer from "./models/StudentQuestionAnswer.js";
 import SubjectPaper from "./models/SubjectPaper.js";
 import SubjectStudentCheckerAssignment from "./models/SubjectStudentCheckerAssignment.js";
 import Token from "./models/Token.js";
+import PasswordResetToken from "./models/PasswordResetToken.js";
 import OnboardingInstitution from "./models/OnboardingInstitution.js";
 
 import authRouter from "./routes/authRoutes.js";
@@ -103,6 +104,7 @@ const runApp = async () => {
   try {
     await sequelize.authenticate();
     console.log("Database connected successfully.");
+    await PasswordResetToken.sync();
     // await sequelize.sync({ alter: true });
 
     server.listen(PORT, "0.0.0.0", () => {

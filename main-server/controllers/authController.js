@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import passport from "passport";
 import streamifier from "streamifier";
@@ -6,10 +7,34 @@ import streamifier from "streamifier";
 import LocalStrategy from "passport-local";
 import User from "../models/User.js";
 import Token from "../models/Token.js";
+import PasswordResetToken from "../models/PasswordResetToken.js";
 import cloudinary from "../cloudinaryConfig.js";
 import sequelize from "../database.js";
 import { Sequelize } from "sequelize";
 import OnboardingInstitution from "../models/OnboardingInstitution.js";
+import { sendPasswordResetOtpEmail } from "../utils/mailer.js";
+
+const PASSWORD_RESET_OTP_MINUTES = 10;
+
+const normalizeEmail = (email) => email?.trim().toLowerCase();
+
+const generatePasswordResetOtp = () => crypto.randomInt(1000, 10000).toString();
+
+const hashPasswordResetOtp = (otp) =>
+  crypto.createHash("sha256").update(String(otp)).digest("hex");
+
+const findActivePasswordResetToken = async (userId) => {
+  return PasswordResetToken.findOne({
+    where: {
+      user_fk_id: userId,
+      used: false,
+      expires_at: {
+        [Sequelize.Op.gt]: new Date(),
+      },
+    },
+    order: [["created_at", "DESC"]],
+  });
+};
 
 const generateAccessToken = (user) => {
   return jwt.sign({ id: user.id }, process.env.SECRET_KEY, { expiresIn: "1d" });
@@ -147,7 +172,7 @@ export const loginUser = async (req, res) => {
   const { email, password } = req.body;
 
   try {
-    const user = await User.findOne({ where: { email_txt: email?.trim().toLowerCase() } });
+    const user = await User.findOne({ where: { email_txt: normalizeEmail(email) } });
     if (!user) {
       return res.status(401).json({ error: "Invalid email or password." });
     }
@@ -200,7 +225,7 @@ export const completeTemporaryPassword = async (req, res) => {
   const { email, currentPassword, newPassword } = req.body;
 
   try {
-    const user = await User.findOne({ where: { email_txt: email?.trim().toLowerCase() } });
+    const user = await User.findOne({ where: { email_txt: normalizeEmail(email) } });
 
     if (!user) {
       return res.status(404).json({ error: "User not found." });
@@ -242,6 +267,125 @@ export const completeTemporaryPassword = async (req, res) => {
     });
   } catch (err) {
     return res.status(500).json({ error: "Error updating password: " + err.message });
+  }
+};
+
+export const requestPasswordResetOtp = async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+
+  try {
+    const user = await User.findOne({ where: { email_txt: email } });
+
+    if (!user) {
+      return res.status(200).json({
+        message: "If the email exists, a password reset OTP has been sent.",
+      });
+    }
+
+    await PasswordResetToken.destroy({
+      where: {
+        user_fk_id: user.id,
+        used: false,
+      },
+    });
+
+    const otp = generatePasswordResetOtp();
+    const otpHash = hashPasswordResetOtp(otp);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_OTP_MINUTES * 60 * 1000);
+
+    const token = await PasswordResetToken.create({
+      user_fk_id: user.id,
+      token_hash: otpHash,
+      expires_at: expiresAt,
+      used: false,
+    });
+
+    try {
+      await sendPasswordResetOtpEmail({
+        to: user.email_txt,
+        fullName: `${user.firstname_txt} ${user.lastname_txt}`.trim(),
+        otp,
+        expiresInMinutes: PASSWORD_RESET_OTP_MINUTES,
+      });
+    } catch (mailError) {
+      await token.destroy();
+      throw mailError;
+    }
+
+    return res.status(200).json({
+      message: "If the email exists, a password reset OTP has been sent.",
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Error sending reset OTP: " + err.message });
+  }
+};
+
+export const verifyPasswordResetOtp = async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  const otp = String(req.body.otp ?? "").trim();
+
+  try {
+    const user = await User.findOne({ where: { email_txt: email } });
+
+    if (!user) {
+      return res.status(404).json({ error: "Invalid email or OTP." });
+    }
+
+    const token = await findActivePasswordResetToken(user.id);
+
+    if (!token) {
+      return res.status(400).json({ error: "OTP has expired or is no longer valid." });
+    }
+
+    if (token.token_hash !== hashPasswordResetOtp(otp)) {
+      return res.status(400).json({ error: "Invalid OTP." });
+    }
+
+    return res.status(200).json({
+      message: "OTP verified successfully.",
+      verified: true,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Error verifying OTP: " + err.message });
+  }
+};
+
+export const resetPasswordWithOtp = async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  const otp = String(req.body.otp ?? "").trim();
+  const { newPassword, confirmNewPassword } = req.body;
+
+  if (newPassword !== confirmNewPassword) {
+    return res.status(400).json({ error: "Passwords do not match." });
+  }
+
+  try {
+    const user = await User.findOne({ where: { email_txt: email } });
+
+    if (!user) {
+      return res.status(404).json({ error: "Invalid email or OTP." });
+    }
+
+    const token = await findActivePasswordResetToken(user.id);
+
+    if (!token) {
+      return res.status(400).json({ error: "OTP has expired or is no longer valid." });
+    }
+
+    if (token.token_hash !== hashPasswordResetOtp(otp)) {
+      return res.status(400).json({ error: "Invalid OTP." });
+    }
+
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    await user.update({ password: hashedNewPassword });
+    await token.update({ used: true });
+
+    return res.status(200).json({
+      message: "Password reset successfully.",
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Error resetting password: " + err.message });
   }
 };
 

@@ -6,6 +6,9 @@ import {
   profile,
   submitInstitution,
   completeTemporaryPassword,
+  requestPasswordResetOtp,
+  verifyPasswordResetOtp,
+  resetPasswordWithOtp,
 } from "../controllers/authController.js";
 import multer from "multer";
 import { validateRequest } from "../middlewares/validate.js";
@@ -38,6 +41,24 @@ authRouter.post(
   userValidationRules.completeTemporaryPassword,
   validateRequest,
   completeTemporaryPassword
+);
+authRouter.post(
+  "/forgot-password/request",
+  userValidationRules.requestPasswordResetOtp,
+  validateRequest,
+  requestPasswordResetOtp
+);
+authRouter.post(
+  "/forgot-password/verify",
+  userValidationRules.verifyPasswordResetOtp,
+  validateRequest,
+  verifyPasswordResetOtp
+);
+authRouter.post(
+  "/forgot-password/reset",
+  userValidationRules.resetPasswordWithOtp,
+  validateRequest,
+  resetPasswordWithOtp
 );
 
 authRouter.get("/profile/:id", userValidationRules.profile, profile);
