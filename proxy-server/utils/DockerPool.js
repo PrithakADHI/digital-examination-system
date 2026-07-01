@@ -15,45 +15,49 @@ class DockerPool {
 
         console.log(`[DockerPool] Initializing pool of ${this.poolSize} containers...`);
         
-        const existingContainers = await this.docker.listContainers({ all: true });
+        try {
+            const existingContainers = await this.docker.listContainers({ all: true });
 
-        for (let i = 0; i < this.poolSize; i++) {
-            const name = `code-runner-pool-${i}`;
-            const existing = existingContainers.find(c => c.Names.some(n => n.includes(name)));
-            
-            let container;
-            if (existing) {
-                console.log(`[DockerPool] Found existing container ${name} (${existing.Id.substring(0, 12)})`);
-                container = this.docker.getContainer(existing.Id);
-                if (existing.State !== 'running') {
-                    console.log(`[DockerPool] Starting stopped container ${name}...`);
+            for (let i = 0; i < this.poolSize; i++) {
+                const name = `code-runner-pool-${i}`;
+                const existing = existingContainers.find(c => c.Names.some(n => n.includes(name)));
+                
+                let container;
+                if (existing) {
+                    console.log(`[DockerPool] Found existing container ${name} (${existing.Id.substring(0, 12)})`);
+                    container = this.docker.getContainer(existing.Id);
+                    if (existing.State !== 'running') {
+                        console.log(`[DockerPool] Starting stopped container ${name}...`);
+                        await container.start();
+                    }
+                } else {
+                    console.log(`[DockerPool] Creating new container ${name}...`);
+                    container = await this.docker.createContainer({
+                        Image: this.imageName,
+                        name: name,
+                        Tty: true,
+                        HostConfig: {
+                            Memory: 128 * 1024 * 1024,
+                            NanoCpus: 500000000,
+                            NetworkMode: 'none',
+                            AutoRemove: false
+                        }
+                    });
                     await container.start();
                 }
-            } else {
-                console.log(`[DockerPool] Creating new container ${name}...`);
-                container = await this.docker.createContainer({
-                    Image: this.imageName,
-                    name: name,
-                    Tty: true,
-                    HostConfig: {
-                        Memory: 128 * 1024 * 1024,
-                        NanoCpus: 500000000,
-                        NetworkMode: 'none',
-                        AutoRemove: false
-                    }
+
+                this.containers.push({
+                    id: container.id,
+                    container: container,
+                    busy: false
                 });
-                await container.start();
             }
 
-            this.containers.push({
-                id: container.id,
-                container: container,
-                busy: false
-            });
+            this.isInitialized = true;
+            console.log('[DockerPool] Pool initialized.');
+        } catch (error) {
+            console.error('[DockerPool] Failed to initialize Docker pool. Code execution will be unavailable.', error.message);
         }
-
-        this.isInitialized = true;
-        console.log('[DockerPool] Pool initialized.');
     }
 
     async execute(code, language) {
