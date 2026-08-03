@@ -12,7 +12,7 @@ import { userValidationRules } from "../validationRules.js";
 
 const authRouter = express.Router();
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const upload = multer({ storage }); 
 
 authRouter.post(
   "/register",

@@ -150,7 +150,7 @@ const runApp = async () => {
   try {
     await sequelizeSqlite.authenticate();
     console.log("SQLite database connected successfully.");
-    await sequelizeSqlite.sync({ alter: true });
+    // await sequelizeSqlite.sync({ alter: true });
     console.log("SQLite database synced.");
 
     // Initialize cron jobs on startup
